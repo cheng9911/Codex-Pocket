@@ -1,0 +1,47 @@
+{
+  "repository": "https://github.com/pingdotgg/t3code",
+  "commit": "983654b3b2f7267a69e3d5d049d781aadbbc3166",
+  "path": "packages/effect-codex-app-server/",
+  "files": [
+    {
+      "path": "packages/codex-transport/vendor/src/_generated/meta.gen.ts",
+      "sha256": "b0d5f6fe0a1365ae360ba1dea7d452fbe639d0e688e6fb5066cb80b18a983246"
+    },
+    {
+      "path": "packages/codex-transport/vendor/src/_generated/namespaces.gen.ts",
+      "sha256": "aa0f868b897c2cbfe9768a63840c76f40a35c40befe1328ce02a8a7054d69255"
+    },
+    {
+      "path": "packages/codex-transport/vendor/src/_generated/schema.gen.ts",
+      "sha256": "3667b6b7dbc689d83e0f1f47fec184ed59b6e06779a5cfa49bf3f6b4a4e49cbe"
+    },
+    {
+      "path": "packages/codex-transport/vendor/src/_internal/shared.ts",
+      "sha256": "19f2415cc7ed54ae94481e70ae6fcb374c3d9770d47265ec960153d33a578ec4"
+    },
+    {
+      "path": "packages/codex-transport/vendor/src/_internal/stdio.ts",
+      "sha256": "c8cb14735b552facacccb44bf379298bc5d0ff8bb421978a18d2243ade2ed7bd"
+    },
+    {
+      "path": "packages/codex-transport/vendor/src/client.ts",
+      "sha256": "6b12e01008b6a0082f17de2e77c901b564927e5e077c660d45c153b347266a5d"
+    },
+    {
+      "path": "packages/codex-transport/vendor/src/errors.ts",
+      "sha256": "c30a27829c41b6daa212b190e9c9946c01a005edd7f9ab99a432ce4377c359de"
+    },
+    {
+      "path": "packages/codex-transport/vendor/src/protocol.ts",
+      "sha256": "1b215b2a2c3c7db3b399f0b5e55e0e45a4603faa6cca39f315635de6b1341bdf"
+    },
+    {
+      "path": "packages/codex-transport/vendor/src/rpc.ts",
+      "sha256": "dbdf0b0b97382f9021643304c6a02bfa1e8c3b27b543155d32a2e1803b1bb526"
+    },
+    {
+      "path": "packages/codex-transport/vendor/src/schema.ts",
+      "sha256": "18933b62dc093d4dcde6fda8995612a1cfee576aa77bd58dc258043db276c220"
+    }
+  ]
+}
