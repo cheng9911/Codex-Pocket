@@ -15,6 +15,7 @@ export class PocketError extends Error {
 }
 export class Store extends EventEmitter {
   db: Database.Database;
+  private bufferedEvents: PocketEvent[] | null = null;
   constructor(path: string) {
     super();
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -41,6 +42,19 @@ export class Store extends EventEmitter {
   }
   setMeta(key: string, value: string) {
     this.db.prepare('INSERT OR REPLACE INTO meta VALUES(?,?)').run(key, value);
+  }
+  batch<T>(fn: () => T): T {
+    if (this.bufferedEvents) return fn();
+    const events: PocketEvent[] = [];
+    this.bufferedEvents = events;
+    let result: T;
+    try {
+      result = this.db.transaction(fn)();
+    } finally {
+      this.bufferedEvents = null;
+    }
+    for (const event of events) this.emit('event', event);
+    return result;
   }
   chats(): Chat[] {
     return (this.db.prepare('SELECT body FROM chats').all() as any[])
@@ -127,7 +141,8 @@ export class Store extends EventEmitter {
       if (seq % 200 === 0) this.db.prepare('DELETE FROM events WHERE seq<?').run(seq - 2000);
       return { seq, type, chatId, data };
     })();
-    this.emit('event', event);
+    if (this.bufferedEvents) this.bufferedEvents.push(event);
+    else this.emit('event', event);
   }
   beginOperation(id: string, input: unknown) {
     const fingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');

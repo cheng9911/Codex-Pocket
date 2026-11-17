@@ -224,12 +224,14 @@ export class PocketService {
       status: 'queued',
       createdAt: Date.now(),
     };
-    this.store.putEntry(entry);
-    // One queue for each chat, serialised by canonical workspace directory.
-    this.store.db
-      .prepare('INSERT INTO queue(operation_id,chat_id,text) VALUES(?,?,?)')
-      .run(operationId, id, text);
-    if (!active(chat)) this.store.patchChat(id, { status: 'queued', error: null });
+    this.store.batch(() => {
+      this.store.putEntry(entry);
+      // Persist the visible message, queue and metadata together before publishing.
+      this.store.db
+        .prepare('INSERT INTO queue(operation_id,chat_id,text) VALUES(?,?,?)')
+        .run(operationId, id, text);
+      if (!active(chat)) this.store.patchChat(id, { status: 'queued', error: null });
+    });
     void this.drain();
     return { queued: true };
   }
@@ -336,8 +338,8 @@ export class PocketService {
           : { decision };
     }
     // Claim synchronously before resolving the provider callback; competing clients lose here.
-    this.liveRequests.delete(id);
     this.store.putRequest({ ...request, status: 'resolved' });
+    this.liveRequests.delete(id);
     live.resolve(response);
     this.refreshWaiting(request.chatId);
     return { resolved: true };

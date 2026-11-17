@@ -69,3 +69,38 @@ test('entry pagination keeps ordering and replay falls back after pruning', () =
     store.close();
   }
 });
+
+test('a failed batch publishes no events and leaves neither phantom message nor queued work', () => {
+  const store = new Store(':memory:');
+  try {
+    const events: unknown[] = [];
+    store.on('event', (e) => events.push(e));
+    assert.throws(
+      () =>
+        store.batch(() => {
+          store.putEntry({
+            id: 'message',
+            chatId: 'chat',
+            turnId: null,
+            kind: 'user',
+            title: 'You',
+            text: 'run',
+            status: 'queued',
+            createdAt: 1,
+          });
+          store.db
+            .prepare('INSERT INTO queue(operation_id,chat_id,text) VALUES(?,?,?)')
+            .run('operation', 'chat', 'run');
+          assert.equal(events.length, 0);
+          throw new Error('simulated write failure');
+        }),
+      /simulated/,
+    );
+    assert.equal(store.entry('message'), undefined);
+    assert.equal((store.db.prepare('SELECT COUNT(*) AS n FROM queue').get() as any).n, 0);
+    assert.equal(store.cursor(), 0);
+    assert.equal(events.length, 0);
+  } finally {
+    store.close();
+  }
+});
