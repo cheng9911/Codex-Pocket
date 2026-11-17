@@ -47,6 +47,47 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     });
     return;
   }
+  if (m.method === 'account/read') {
+    send({
+      id: m.id,
+      result: { account: { type: 'chatgpt', planType: 'plus', email: 'private@example.test' } },
+    });
+    return;
+  }
+  if (m.method === 'account/rateLimits/read') {
+    send({
+      id: m.id,
+      result: {
+        rateLimits: {
+          limitId: 'codex',
+          primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1900000000 },
+        },
+        rateLimitsByLimitId: {
+          codex: {
+            limitId: 'codex',
+            primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1900000000 },
+          },
+          other: {
+            limitId: 'other',
+            limitName: 'Other model',
+            secondary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: null },
+          },
+        },
+      },
+    });
+    return;
+  }
+  if (m.method === 'turn/steer') {
+    const c = chats.get(p.threadId);
+    if (!c?.turnId || c.turnId !== p.expectedTurnId) {
+      send({ id: m.id, error: { code: -32600, message: 'No matching active turn' } });
+      return;
+    }
+    send({ id: m.id, result: { turnId: c.turnId } });
+    if (p.input[0].text === 'complete') finish(p.threadId, c.turnId);
+    if (p.input[0].text === 'fail') finish(p.threadId, c.turnId, 'failed');
+    return;
+  }
   if (m.method === 'thread/start') {
     const id = randomUUID();
     chats.set(id, { id, cwd: p.cwd, turnId: null });
@@ -84,6 +125,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
           turnId,
           itemId: 'cmd-' + turnId,
           command: 'printf test',
+          cwd: c.cwd,
+          reason: '测试命令需要你批准后继续。',
+          availableDecisions: ['accept', 'acceptForSession', 'decline'],
           questions: [
             {
               id: 'q1',

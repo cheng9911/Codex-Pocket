@@ -67,6 +67,42 @@ export function createHttp(
   });
   app.use('/api', auth.middleware);
   app.get('/api/snapshot', (_req, res) => res.json(service.snapshot()));
+  app.get('/api/usage', async (_req, res) => res.json(await service.refreshUsage()));
+  app.post('/api/favorites', async (req, res) => {
+    const { operationId, path, saved } = req.body;
+    if (typeof path !== 'string' || typeof saved !== 'boolean')
+      throw new PocketError(400, '收藏参数无效');
+    res.json(
+      await service.operation(String(operationId), { type: 'favorite', path, saved }, () =>
+        service.favorite(path, saved),
+      ),
+    );
+  });
+  app.post('/api/queue/:id/cancel', async (req, res) => {
+    const id = req.params.id;
+    res.json(
+      await service.operation(String(req.body.operationId), { type: 'cancelQueue', id }, async () =>
+        service.cancelQueued(id),
+      ),
+    );
+  });
+  app.post('/api/chats/:id/update', async (req, res) => {
+    const id = req.params.id;
+    const { operationId, title, pinned } = req.body;
+    if (
+      (title !== undefined && typeof title !== 'string') ||
+      (pinned !== undefined && typeof pinned !== 'boolean') ||
+      (title === undefined && pinned === undefined)
+    )
+      throw new PocketError(400, '聊天整理参数无效');
+    res.json(
+      await service.operation(
+        String(operationId),
+        { type: 'organize', id, title, pinned },
+        async () => service.organize(id, { title, pinned }),
+      ),
+    );
+  });
   app.get('/api/config', (_req, res) => res.json({ roots: service.roots, models: service.models }));
   app.get('/api/directories', async (req, res) =>
     res.json(
@@ -98,13 +134,18 @@ export function createHttp(
     );
   });
   app.post('/api/chats/:id/messages', async (req, res) => {
-    const { text, operationId } = req.body;
+    const { text, operationId, delivery = 'queue', expectedTurnId } = req.body;
     if (typeof text !== 'string' || !text.trim() || text.length > 30000)
       throw new PocketError(400, '消息不能为空且不能超过 30000 字符');
+    if (!['queue', 'steer'].includes(delivery)) throw new PocketError(400, '请选择有效的发送方式');
+    if (delivery === 'steer' && typeof expectedTurnId !== 'string')
+      throw new PocketError(400, '追加指令需要当前执行轮次标识');
     const id = req.params.id;
     res.json(
-      await service.operation(String(operationId), { type: 'message', id, text }, () =>
-        service.message(id, text.trim(), String(operationId)),
+      await service.operation(
+        String(operationId),
+        { type: 'message', id, text, delivery, expectedTurnId },
+        () => service.message(id, text.trim(), String(operationId), delivery, expectedTurnId),
       ),
     );
   });

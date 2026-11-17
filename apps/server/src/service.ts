@@ -6,7 +6,16 @@ import {
   type CodexTransport,
   type WireParams,
 } from '../../../packages/codex-transport/index.ts';
-import type { Chat, Entry, Snapshot, HostInfo, PendingRequest } from '../../../packages/types.ts';
+import type {
+  Chat,
+  Entry,
+  Snapshot,
+  HostInfo,
+  PendingRequest,
+  Delivery,
+  QueuedMessage,
+  AccountUsage,
+} from '../../../packages/types.ts';
 import { Store, PocketError } from './store.ts';
 
 export interface AgentTransport {
@@ -25,6 +34,14 @@ export class PocketService {
   error: string | null = null;
   roots: string[] = [];
   models: Array<{ id: string; name: string }> = [];
+  usage: AccountUsage = {
+    accountType: null,
+    plan: null,
+    buckets: [],
+    updatedAt: null,
+    error: null,
+  };
+  private usageRefresh?: Promise<AccountUsage>;
   private loaded = new Set<string>();
   private liveRequests = new Map<string, Resolver>();
   private deltas = new Map<string, Entry>();
@@ -35,6 +52,7 @@ export class PocketService {
     public store: Store,
     public host: HostInfo,
   ) {
+    this.markUncertainSends();
     for (const c of store.chats())
       if (active(c))
         store.patchChat(c.id, {
@@ -61,6 +79,14 @@ export class PocketService {
       if (entry) store.putEntry({ ...entry, status: 'cancelled' });
     }
     store.db.prepare('DELETE FROM queue').run();
+  }
+  private markUncertainSends() {
+    const rows = this.store.db
+      .prepare(
+        "SELECT body FROM entries WHERE json_extract(body,'$.kind')='user' AND json_extract(body,'$.status')='sending'",
+      )
+      .all() as { body: string }[];
+    for (const row of rows) this.store.putEntry({ ...JSON.parse(row.body), status: 'uncertain' });
   }
   async start(roots: string[], factory = openTransport) {
     this.roots = await Promise.all(roots.map((r) => realpath(resolve(r))));
@@ -104,7 +130,117 @@ export class PocketService {
       cursor: this.store.cursor(),
       ready: this.ready,
       error: this.error,
+      queue: this.queued(),
+      favorites: this.favorites(),
+      usage: this.usage,
     };
+  }
+  favorites(): string[] {
+    return JSON.parse(this.store.meta('favorites') ?? '[]');
+  }
+  async favorite(path: string, saved: boolean) {
+    // Removal must work even if a previously valid directory has disappeared.
+    const actual = saved ? await this.directory(path) : path;
+    const next = this.favorites().filter((p) => p !== actual);
+    if (saved) next.push(actual);
+    if (next.length > 50) throw new PocketError(400, '最多收藏 50 个目录');
+    this.store.batch(() => {
+      this.store.setMeta('favorites', JSON.stringify(next));
+      this.store.publish('favorites', next);
+    });
+    return next;
+  }
+  organize(id: string, patch: { title?: string; pinned?: boolean }) {
+    if (patch.title !== undefined && (!patch.title.trim() || patch.title.length > 120))
+      throw new PocketError(400, '聊天名称需要 1 至 120 个字符');
+    return this.store.patchChat(id, {
+      ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
+      ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
+    });
+  }
+  queued(): QueuedMessage[] {
+    return (this.store.db.prepare('SELECT * FROM queue ORDER BY position').all() as any[]).map(
+      (r) => ({
+        id: r.operation_id,
+        chatId: r.chat_id,
+        text: r.text,
+        createdAt: this.store.entry(`user:${r.operation_id}`)?.createdAt ?? 0,
+      }),
+    );
+  }
+  cancelQueued(id: string) {
+    const row = this.queued().find((r) => r.id === id);
+    if (!row) throw new PocketError(409, '消息已开始发送或已移出队列，请检查聊天记录');
+    this.store.batch(() => {
+      this.store.db.prepare('DELETE FROM queue WHERE operation_id=?').run(id);
+      const e = this.store.entry(`user:${id}`);
+      if (e) this.store.putEntry({ ...e, status: 'cancelled' });
+      const chat = this.store.chat(row.chatId);
+      if (chat.status === 'queued' && !this.queued().some((r) => r.chatId === chat.id))
+        this.store.patchChat(chat.id, { status: 'idle' });
+      this.store.publish('queue', this.queued());
+    });
+    return { cancelled: true };
+  }
+  private applyLimits(result: any, replaceAll = true) {
+    const previous = this.usage.buckets;
+    const source =
+      result.rateLimitsByLimitId && typeof result.rateLimitsByLimitId === 'object'
+        ? Object.values(result.rateLimitsByLimitId)
+        : result.rateLimits
+          ? [result.rateLimits]
+          : [];
+    this.usage = {
+      ...this.usage,
+      updatedAt: Date.now(),
+      error: null,
+      buckets: source
+        .filter((b: any) => b && typeof b === 'object')
+        .map((b: any) => ({
+          id: String(b.limitId ?? 'codex'),
+          name: String(b.limitName ?? b.limitId ?? 'Codex'),
+          plan: typeof b.planType === 'string' ? b.planType : null,
+          windows: [b.primary, b.secondary]
+            .filter((w) => w && Number.isFinite(w.usedPercent))
+            .map((w) => ({
+              usedPercent: w.usedPercent,
+              durationMins: Number.isFinite(w.windowDurationMins) ? w.windowDurationMins : null,
+              resetsAt: Number.isFinite(w.resetsAt) ? w.resetsAt : null,
+            })),
+        })),
+    };
+    if (!replaceAll) {
+      const updated = new Set(this.usage.buckets.map((b) => b.id));
+      this.usage.buckets = [...previous.filter((b) => !updated.has(b.id)), ...this.usage.buckets];
+    }
+    this.store.publish('usage', this.usage);
+  }
+  refreshUsage(): Promise<AccountUsage> {
+    if (this.usageRefresh) return this.usageRefresh;
+    this.usageRefresh = (async () => {
+      const agent = this.agent();
+      const [account, limits] = await Promise.allSettled([
+        agent.request('account/read', { refreshToken: false }),
+        agent.request('account/rateLimits/read'),
+      ]);
+      if (this.closing) return this.usage;
+      // Only display account metadata; credentials and email are never forwarded.
+      if (account.status === 'fulfilled')
+        this.usage = {
+          ...this.usage,
+          accountType: account.value.account?.type ?? null,
+          plan: account.value.account?.planType ?? null,
+        };
+      if (limits.status === 'fulfilled') this.applyLimits(limits.value);
+      else {
+        this.usage = { ...this.usage, error: '当前账号未返回额度，或暂时无法读取。' };
+        this.store.publish('usage', this.usage);
+      }
+      return this.usage;
+    })().finally(() => {
+      this.usageRefresh = undefined;
+    });
+    return this.usageRefresh;
   }
   private allowed(path: string) {
     return this.roots.some((root) => {
@@ -210,20 +346,46 @@ export class PocketService {
       this.loaded.add(chat.id);
     }
   }
-  async message(id: string, text: string, operationId: string) {
+  async message(
+    id: string,
+    text: string,
+    operationId: string,
+    delivery: Delivery = 'queue',
+    expectedTurnId?: string,
+  ) {
     this.agent();
     const chat = this.store.chat(id);
     if (!this.allowed(chat.cwd)) throw new PocketError(403, '工作目录不在允许的项目范围内');
+    if (delivery === 'steer' && (!chat.turnId || !active(chat) || chat.status === 'stopping'))
+      throw new PocketError(409, '当前没有可追加指令的任务，请改为发送新任务');
+    if (delivery === 'steer' && expectedTurnId !== undefined && expectedTurnId !== chat.turnId)
+      throw new PocketError(409, '执行轮次已经改变，请确认当前任务后再补充指令');
     const entry: Entry = {
       id: `user:${operationId}`,
       chatId: id,
-      turnId: null,
+      turnId: delivery === 'steer' ? chat.turnId : null,
       kind: 'user',
       title: '你',
       text,
-      status: 'queued',
+      status: delivery === 'steer' ? 'sending' : 'queued',
       createdAt: Date.now(),
     };
+    if (delivery === 'steer') {
+      this.store.putEntry(entry);
+      try {
+        const result = await this.agent().request('turn/steer', {
+          threadId: chat.nativeId ?? chat.id,
+          expectedTurnId: chat.turnId,
+          input: [{ type: 'text', text, text_elements: [] }],
+        });
+        if (result.turnId !== chat.turnId) throw new Error('追加指令的执行标识未确认');
+        this.store.putEntry({ ...entry, status: 'steered' });
+        return { steered: true };
+      } catch (e) {
+        this.store.putEntry({ ...entry, status: 'uncertain' });
+        throw e;
+      }
+    }
     this.store.batch(() => {
       this.store.putEntry(entry);
       // Persist the visible message, queue and metadata together before publishing.
@@ -231,6 +393,7 @@ export class PocketService {
         .prepare('INSERT INTO queue(operation_id,chat_id,text) VALUES(?,?,?)')
         .run(operationId, id, text);
       if (!active(chat)) this.store.patchChat(id, { status: 'queued', error: null });
+      this.store.publish('queue', this.queued());
     });
     void this.drain();
     return { queued: true };
@@ -241,11 +404,21 @@ export class PocketService {
     try {
       const queue = this.store.db.prepare('SELECT * FROM queue ORDER BY position').all() as any[];
       for (const row of queue) {
+        if (
+          !this.store.db.prepare('SELECT 1 FROM queue WHERE operation_id=?').get(row.operation_id)
+        )
+          continue;
         const chat = this.store.chat(row.chat_id);
         if (this.store.chats().some((c) => c.cwd === chat.cwd && active(c))) continue;
-        this.store.patchChat(chat.id, { status: 'running', error: null });
-        // Remove before I/O: uncertain sends never replay after a crash.
-        this.store.db.prepare('DELETE FROM queue WHERE position=?').run(row.position);
+        this.store.batch(() => {
+          this.store.patchChat(chat.id, { status: 'running', error: null });
+          // Persist the handoff boundary before I/O. A crash must leave an
+          // uncertain message rather than a phantom item still labelled queued.
+          this.store.db.prepare('DELETE FROM queue WHERE position=?').run(row.position);
+          const entry = this.store.entry(`user:${row.operation_id}`)!;
+          this.store.putEntry({ ...entry, status: 'sending' });
+          this.store.publish('queue', this.queued());
+        });
         try {
           await this.directory(chat.cwd);
           await this.load(chat);
@@ -262,6 +435,8 @@ export class PocketService {
           this.store.patchChat(chat.id, { status: 'failed', turnId: null, error: errorText(e) });
           const entry = this.store.entry(`user:${row.operation_id}`)!;
           this.store.putEntry({ ...entry, status: 'uncertain' });
+          for (const next of this.queued().filter((r) => r.chatId === chat.id))
+            this.cancelQueued(next.id);
         }
       }
     } finally {
@@ -292,6 +467,7 @@ export class PocketService {
       const e = this.store.entry(`user:${r.operation_id}`);
       if (e) this.store.putEntry({ ...e, status: 'cancelled' });
     }
+    this.store.publish('queue', this.queued());
     if (!chat.turnId) {
       if (chat.status === 'running') throw new PocketError(409, '任务正在启动，请稍后停止');
       if (chat.status === 'queued') this.store.patchChat(id, { status: 'interrupted' });
@@ -330,11 +506,17 @@ export class PocketService {
         answers: Object.fromEntries(questions.map((q: any) => [q.id, { answers: answers[q.id] }])),
       };
     } else {
-      if (!['accept', 'decline'].includes(decision ?? ''))
+      if (!['accept', 'acceptForSession', 'decline'].includes(decision ?? ''))
         throw new PocketError(400, '无效的审批决定');
+      const available = request.params.availableDecisions;
+      if (Array.isArray(available) && !available.includes(decision))
+        throw new PocketError(400, 'Codex 不支持此审批范围');
       response =
         request.method === 'item/permissions/requestApproval'
-          ? { permissions: decision === 'accept' ? request.params.permissions : {}, scope: 'turn' }
+          ? {
+              permissions: decision !== 'decline' ? request.params.permissions : {},
+              scope: decision === 'acceptForSession' ? 'session' : 'turn',
+            }
           : { decision };
     }
     // Claim synchronously before resolving the provider callback; competing clients lose here.
@@ -381,7 +563,17 @@ export class PocketService {
         params.reason ??
         params.command ??
         (kind === 'question' ? 'Codex 需要你的回答' : 'Codex 请求操作权限'),
-      params,
+      params: {
+        ...params,
+        cwd: params.cwd ?? chat.cwd,
+        command: params.command ?? this.store.entry(`${chat.id}:${params.itemId}`)?.command,
+        changes:
+          params.changes ??
+          (method === 'item/fileChange/requestApproval'
+            ? (this.store.entry(`${chat.id}:${params.itemId}`)?.changes ??
+              this.store.entry(`${chat.id}:${params.itemId}`)?.text)
+            : undefined),
+      },
       status: 'pending',
       createdAt: Date.now(),
     };
@@ -401,6 +593,21 @@ export class PocketService {
       }
   }
   notification(method: string, p: WireParams) {
+    if (method === 'account/rateLimits/updated') {
+      this.applyLimits(p, false);
+      return;
+    }
+    if (method === 'account/updated') {
+      this.usage = {
+        accountType: p.authMode ?? null,
+        plan: p.planType ?? null,
+        buckets: [],
+        updatedAt: null,
+        error: null,
+      };
+      this.store.publish('usage', this.usage);
+      return;
+    }
     if (!p.threadId) return;
     const chat = this.store.chats().find((c) => (c.nativeId ?? c.id) === p.threadId);
     if (!chat) return;
@@ -417,6 +624,9 @@ export class PocketService {
             ? 'interrupted'
             : 'failed';
       this.store.patchChat(chatId, { status, turnId: null, error: p.turn.error?.message ?? null });
+      if (status !== 'completed')
+        for (const next of this.queued().filter((r) => r.chatId === chatId))
+          this.cancelQueued(next.id);
       void this.drain();
     } else if (method === 'serverRequest/resolved') {
       // Native IDs can differ from item IDs; match explicit fields only.
@@ -461,6 +671,9 @@ export class PocketService {
         text: typeof text === 'string' ? text : JSON.stringify(text, null, 2),
         status: item.status ?? (method === 'item/completed' ? 'completed' : 'running'),
         createdAt: old?.createdAt ?? Date.now(),
+        command: item.command ?? old?.command,
+        cwd: item.cwd ?? old?.cwd,
+        changes: item.changes ?? old?.changes,
       });
     } else if (['item/agentMessage/delta', 'item/commandExecution/outputDelta'].includes(method)) {
       const id = `${chatId}:${p.itemId}`;
@@ -494,6 +707,7 @@ export class PocketService {
   terminated(error: string) {
     if (this.closing) return;
     this.flushDeltas();
+    this.markUncertainSends();
     this.ready = false;
     this.error = error;
     this.loaded.clear();

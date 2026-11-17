@@ -144,6 +144,9 @@ export class Store extends EventEmitter {
     if (this.bufferedEvents) this.bufferedEvents.push(event);
     else this.emit('event', event);
   }
+  publish(type: string, data: unknown) {
+    this.commit(type, null, data, () => {});
+  }
   beginOperation(id: string, input: unknown) {
     const fingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     const existing = this.operation(id);

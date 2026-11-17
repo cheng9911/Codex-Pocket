@@ -3,7 +3,7 @@ import { setup } from '../tests/helpers.ts';
 import { createHttp } from '../apps/server/src/http.ts';
 const env = await setup();
 env.service.host.name = process.env.POCKET_NAME ?? 'Pocket 测试主机';
-const server = createHttp(env.service);
+let server = createHttp(env.service);
 const port = Number(process.env.POCKET_PORT ?? 4311);
 await new Promise<void>((r) => server.http.listen(port, '127.0.0.1', r));
 console.log(`Isolated test preview http://127.0.0.1:${port}`);
@@ -20,3 +20,21 @@ const stop = async () => {
 };
 process.on('SIGINT', () => void stop());
 process.on('SIGTERM', () => void stop());
+
+// QA-only network interruption. The fixture agent and SQLite stay alive.
+let paused = false;
+process.on('SIGUSR1', () => {
+  if (!paused) {
+    paused = true;
+    void server.close().then(() => console.log('Test HTTP/WS paused'));
+  }
+});
+process.on('SIGUSR2', () => {
+  if (paused) {
+    server = createHttp(env.service);
+    server.http.listen(port, '127.0.0.1', () => {
+      paused = false;
+      console.log('Test HTTP/WS resumed');
+    });
+  }
+});

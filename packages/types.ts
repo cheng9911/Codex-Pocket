@@ -12,6 +12,7 @@ export interface Chat {
   id: string;
   nativeId?: string;
   title: string;
+  pinned?: boolean;
   cwd: string;
   model: string | null;
   status: ChatStatus;
@@ -30,6 +31,9 @@ export interface Entry {
   status: string;
   createdAt: number;
   order?: number;
+  command?: string;
+  cwd?: string;
+  changes?: unknown;
 }
 export interface PendingRequest {
   id: string;
@@ -53,6 +57,29 @@ export interface Snapshot {
   requests: PendingRequest[];
   cursor: number;
   ready: boolean;
+  error: string | null;
+  queue: QueuedMessage[];
+  favorites: string[];
+  usage: AccountUsage;
+}
+export type Delivery = 'queue' | 'steer';
+export interface QueuedMessage {
+  id: string;
+  chatId: string;
+  text: string;
+  createdAt: number;
+}
+export interface RateLimitBucket {
+  id: string;
+  name: string;
+  plan: string | null;
+  windows: Array<{ usedPercent: number; durationMins: number | null; resetsAt: number | null }>;
+}
+export interface AccountUsage {
+  accountType: string | null;
+  plan: string | null;
+  buckets: RateLimitBucket[];
+  updatedAt: number | null;
   error: string | null;
 }
 export interface SavedHost {

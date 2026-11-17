@@ -17,6 +17,10 @@ import {
   Square,
   Terminal,
   X,
+  Pin,
+  ListTodo,
+  Pencil,
+  Bookmark,
 } from 'lucide-react';
 import '@fontsource/inter/latin-400.css';
 import '@fontsource/inter/latin-500.css';
@@ -32,6 +36,7 @@ import type {
 } from '../../../packages/types.ts';
 import { api, operation } from './api.ts';
 import './style.css';
+import { MessageComposer, UsagePanel, PendingPanel, OrganizePanel } from './features.tsx';
 
 const statusNames: Record<string, string> = {
   idle: '就绪',
@@ -118,9 +123,11 @@ function App() {
     [hasMore, setHasMore] = useState(false),
     [loading, setLoading] = useState(false);
   const [hosts, setHosts] = useState(bootHosts),
-    [panel, setPanel] = useState<'hosts' | 'new' | 'settings' | null>(null);
+    [panel, setPanel] = useState<
+      'hosts' | 'new' | 'settings' | 'pending' | 'usage' | 'organize' | null
+    >(null);
   const [search, setSearch] = useState(''),
-    [draft, setDraft] = useState(''),
+    [filter, setFilter] = useState('all'),
     [sending, setSending] = useState(false);
   const [code, setCode] = useState(''),
     [label, setLabel] = useState('我的浏览器');
@@ -184,14 +191,14 @@ function App() {
         setHasMore(result.hasMore);
       }
     } catch (e) {
-      setError((e as Error).message);
+      if (selectedRef.current === id && entryGeneration.current === gen)
+        setError((e as Error).message);
     } finally {
       if (entryGeneration.current === gen) setLoading(false);
     }
   }
   useEffect(() => {
     if (!host) return;
-    setDraft(selected ? read(`draft:${host.id}:${selected}`, '') : '');
     setEntries([]);
     liveEntries.current.clear();
     follow.current = true;
@@ -202,8 +209,8 @@ function App() {
     history.replaceState(null, '', u);
   }, [selected, host?.id, paired]);
   useEffect(() => {
-    if (host && selected) save(`draft:${host.id}:${selected}`, draft);
-  }, [draft, host?.id, selected]);
+    if (paired) api('/usage').catch(() => {});
+  }, [paired]);
   useEffect(() => {
     if (!paired) return;
     let stopped = false,
@@ -255,6 +262,8 @@ function App() {
                   }
                 : s,
             );
+          else if (['queue', 'favorites', 'usage'].includes(e.type))
+            setSnapshot((s) => (s ? { ...s, [e.type]: e.data } : s));
           else if (e.type === 'entry' && e.chatId === selectedRef.current) {
             liveEntries.current.set(e.data.id, { seq: e.seq, entry: e.data });
             setEntries((old) => {
@@ -298,6 +307,15 @@ function App() {
       scroller.current.scrollTop = scroller.current.scrollHeight;
   }, [entries, pending.length, selected]);
   useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      if (follow.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [selected, paired]);
+  useEffect(() => {
     if (!panel) return;
     const previous = document.activeElement as HTMLElement;
     const el = modalRef.current;
@@ -321,22 +339,6 @@ function App() {
       setSending(false);
     }
   }
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selected || !draft.trim() || sending) return;
-    setSending(true);
-    setError('');
-    const text = draft;
-    try {
-      await api(`/chats/${selected}/messages`, { text, operationId: operation() });
-      setDraft('');
-      follow.current = true;
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSending(false);
-    }
-  }
   async function stop() {
     if (!selected) return;
     try {
@@ -350,10 +352,17 @@ function App() {
     url.hash = new URLSearchParams({ hosts: JSON.stringify(hosts) }).toString();
     location.assign(url);
   };
-  const filtered = (snapshot?.chats ?? []).filter((c) =>
-    (c.title + ' ' + c.cwd).toLowerCase().includes(search.toLowerCase()),
-  );
-  const waiting = snapshot?.requests.length ?? 0;
+  const filtered = (snapshot?.chats ?? [])
+    .filter(
+      (c) =>
+        (c.title + ' ' + c.cwd).toLowerCase().includes(search.toLowerCase()) &&
+        (filter === 'all' ||
+          (filter === 'running' && ['running', 'queued', 'stopping'].includes(c.status)) ||
+          (filter === 'waiting' && ['waiting_approval', 'waiting_input'].includes(c.status)) ||
+          (filter === 'ended' && ['completed', 'failed', 'interrupted'].includes(c.status))),
+    )
+    .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt);
+  const waiting = (snapshot?.requests.length ?? 0) + (snapshot?.queue?.length ?? 0);
   const connectionText = paired === false ? '等待配对' : connection;
   return (
     <div className={'app ' + (selected ? 'has-selection' : '')}>
@@ -367,7 +376,9 @@ function App() {
           <Server size={17} />
           <span>
             {host?.name ?? '连接主机'}
-            <small>{connectionText}</small>
+            <small>
+              {host?.id.slice(0, 8)} · {connectionText}
+            </small>
           </span>
           <ChevronDown size={15} />
         </button>
@@ -388,6 +399,19 @@ function App() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <label className="status-filter">
+          <span className="sr-only">状态筛选</span>
+          <select aria-label="状态筛选" value={filter} onChange={(e) => setFilter(e.target.value)}>
+            <option value="all">全部聊天</option>
+            <option value="running">运行中</option>
+            <option value="waiting">等我处理</option>
+            <option value="ended">已结束</option>
+          </select>
+          <button type="button" onClick={() => setPanel('pending')} disabled={!paired}>
+            <ListTodo size={15} />
+            待处理{waiting > 0 ? ` ${waiting}` : ''}
+          </button>
+        </label>
         <div className="list-caption">
           <span>此主机的聊天</span>
           {waiting > 0 && <span className="attention">{waiting} 项待处理</span>}
@@ -399,7 +423,10 @@ function App() {
               key={c.id}
               onClick={() => setSelected(c.id)}
             >
-              <div className="row-title">{c.title}</div>
+              <div className="row-title">
+                {c.pinned && <Pin size={12} aria-label="已置顶" />}
+                {c.title}
+              </div>
               <div className="row-meta">
                 <span>{c.cwd.split('/').pop()}</span>
                 <Badge chat={c} />
@@ -408,10 +435,21 @@ function App() {
           ))}
           {paired && !filtered.length && (
             <div className="list-empty">
-              {search ? '没有匹配的聊天' : '还没有聊天。选择工作目录，开始第一个任务。'}
+              {search || filter !== 'all'
+                ? '没有符合当前搜索和状态条件的聊天。'
+                : '还没有聊天。选择工作目录，开始第一个任务。'}
             </div>
           )}
         </nav>
+        {paired && (
+          <button className="quota-link" onClick={() => setPanel('usage')}>
+            <span>账号额度</span>
+            <span>
+              {snapshot?.usage?.plan ?? snapshot?.usage?.accountType ?? '查看状态'}
+              <ChevronRight size={14} />
+            </span>
+          </button>
+        )}
         <div className="sidebar-bottom">
           <span
             className={'connection-dot ' + (paired && connection === '实时连接' ? 'online' : '')}
@@ -436,7 +474,18 @@ function App() {
             <ArrowLeft size={20} />
           </button>
           <div className="header-title">
-            <h1>{chat?.title ?? 'Codex Pocket'}</h1>
+            <div className="title-line">
+              <h1>{chat?.title ?? 'Codex Pocket'}</h1>
+              {chat && (
+                <button
+                  className="icon-button"
+                  aria-label="整理聊天"
+                  onClick={() => setPanel('organize')}
+                >
+                  <Pencil size={14} />
+                </button>
+              )}
+            </div>
             <div className="header-meta">
               {chat ? (
                 <>
@@ -457,6 +506,22 @@ function App() {
             <Server size={18} />
           </button>
         </header>
+        <div className="host-identity">
+          <button onClick={() => setPanel('hosts')}>
+            <Server size={14} />
+            <strong>{host?.name ?? '正在连接主机'}</strong>
+            <span>{host?.id.slice(0, 8)}</span>
+            <ChevronDown size={13} />
+          </button>
+          <button
+            onClick={() => setPanel('pending')}
+            disabled={!paired}
+            aria-label={`待处理列表，${waiting} 项`}
+          >
+            <ListTodo size={15} />
+            <span>待处理 {waiting}</span>
+          </button>
+        </div>
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
@@ -566,7 +631,13 @@ function App() {
                   <EntryView key={entry.id} entry={entry} />
                 ))}
                 {pending.map((request) => (
-                  <RequestCard key={request.id} request={request} onError={setError} />
+                  <RequestCard
+                    key={request.id}
+                    request={request}
+                    host={host!}
+                    chat={chat}
+                    onError={setError}
+                  />
                 ))}
                 {chat.error && (
                   <div className="task-error" role="status">
@@ -588,58 +659,21 @@ function App() {
                 查看最新输出
               </button>
             )}
-            <div className="composer-wrap">
-              <form className="composer" onSubmit={send}>
-                <label className="sr-only" htmlFor="message">
-                  发送给 Codex
-                </label>
-                <textarea
-                  id="message"
-                  placeholder={busy(chat) ? '补充指令，发送后排队执行…' : '让 Codex 做些什么…'}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                      e.preventDefault();
-                      void send(e);
-                    }
-                  }}
-                />
-                <div className="composer-toolbar">
-                  <span className="model-label">
-                    <span className="model-dot" />
-                    {chat.model ?? 'Codex 默认模型'}
-                    <span className="permission-label">需要时审批</span>
-                  </span>
-                  <div>
-                    {busy(chat) && (
-                      <button
-                        type="button"
-                        className="stop-button"
-                        onClick={stop}
-                        disabled={chat.status === 'stopping'}
-                      >
-                        <Square size={12} />
-                        {chat.status === 'stopping' ? '正在停止' : '停止'}
-                      </button>
-                    )}
-                    <button
-                      className="send-button"
-                      aria-label={busy(chat) ? '排队发送消息' : '发送消息'}
-                      disabled={
-                        !draft.trim() || sending || !snapshot?.ready || connection !== '实时连接'
-                      }
-                    >
-                      <ArrowUp size={19} />
-                    </button>
-                  </div>
-                </div>
-              </form>
-              <div className="composer-note">
-                {busy(chat) ? '当前任务继续运行 · 新消息会排队' : '消息和代码留在主机'}
-                <span>Ctrl / ⌘ + Enter 发送</span>
-              </div>
-            </div>
+            {host && (
+              <MessageComposer
+                key={`${host.id}:${chat.id}`}
+                host={host}
+                chat={chat}
+                ready={!!snapshot?.ready}
+                connected={connection === '实时连接'}
+                queue={(snapshot?.queue ?? []).filter((r) => r.chatId === chat.id)}
+                onError={setError}
+                onStop={stop}
+                onSend={() => {
+                  follow.current = true;
+                }}
+              />
+            )}
           </>
         )}
       </main>
@@ -678,7 +712,16 @@ function App() {
           >
             <header>
               <h2 id="modal-title">
-                {panel === 'new' ? '新建聊天' : panel === 'hosts' ? '切换主机' : '设备与连接'}
+                {
+                  {
+                    new: '新建聊天',
+                    hosts: '切换主机',
+                    settings: '设备与连接',
+                    pending: '待处理列表',
+                    usage: '账号额度',
+                    organize: '整理聊天',
+                  }[panel]
+                }
               </h2>
               <button className="icon-button" aria-label="关闭" onClick={() => setPanel(null)}>
                 <X size={20} />
@@ -690,7 +733,7 @@ function App() {
                   setSelected(c.id);
                   setPanel(null);
                 }}
-                onError={setError}
+                favorites={snapshot?.favorites ?? []}
               />
             ) : panel === 'hosts' ? (
               <HostPanel
@@ -699,6 +742,22 @@ function App() {
                 onHosts={storeHosts}
                 onOpen={openHost}
               />
+            ) : panel === 'pending' ? (
+              <PendingPanel
+                snapshot={snapshot}
+                onSelect={(id) => {
+                  follow.current = true;
+                  setSelected(id);
+                  setPanel(null);
+                  requestAnimationFrame(() =>
+                    scroller.current?.scrollTo({ top: scroller.current.scrollHeight }),
+                  );
+                }}
+              />
+            ) : panel === 'usage' ? (
+              <UsagePanel usage={snapshot?.usage} host={host} />
+            ) : panel === 'organize' && chat ? (
+              <OrganizePanel chat={chat} onDone={() => setPanel(null)} />
             ) : (
               <SettingsPanel
                 onLogout={() => {
@@ -744,9 +803,13 @@ function EntryView({ entry }: { entry: Entry }) {
             ? '等待执行'
             : entry.status === 'uncertain'
               ? '发送结果待确认'
-              : entry.status === 'cancelled'
-                ? '已取消'
-                : ''}
+              : entry.status === 'steered'
+                ? '已补充到当前任务'
+                : entry.status === 'sending'
+                  ? '正在确认发送'
+                  : entry.status === 'cancelled'
+                    ? '已取消'
+                    : ''}
         </span>
       </div>
       <div className="message-body">
@@ -773,13 +836,35 @@ function EntryView({ entry }: { entry: Entry }) {
 }
 function RequestCard({
   request,
+  host,
+  chat,
   onError,
 }: {
   request: PendingRequest;
+  host: HostInfo;
+  chat: Chat;
   onError: (v: string) => void;
 }) {
   const [busy, setBusy] = useState(false),
-    [answers, setAnswers] = useState<Record<string, string>>({});
+    [answers, setAnswers] = useState<Record<string, string>>({}),
+    [scope, setScope] = useState('accept');
+  const sessionAllowed =
+    !Array.isArray(request.params.availableDecisions) ||
+    request.params.availableDecisions.includes('acceptForSession');
+  const isFiles = request.method === 'item/fileChange/requestApproval';
+  const isPermissions = request.method === 'item/permissions/requestApproval';
+  const network = request.params.networkApprovalContext;
+  let changes = request.params.changes;
+  if (typeof changes === 'string') {
+    try {
+      changes = JSON.parse(changes);
+    } catch {}
+  }
+  const paths = Array.isArray(changes)
+    ? changes.map((c: any) => c.path).filter((p: any) => typeof p === 'string')
+    : [];
+  const command =
+    typeof request.params.command === 'string' ? request.params.command : '未提供命令预览';
   const submit = async (decision?: string) => {
     setBusy(true);
     try {
@@ -802,24 +887,115 @@ function RequestCard({
         <ShieldCheck size={18} />
         <strong>{request.kind === 'question' ? '需要你的回答' : '等待你审批'}</strong>
       </div>
-      <p>{request.prompt}</p>
+      <div className="request-context">
+        <strong>
+          {host.name} · {host.id.slice(0, 8)}
+        </strong>
+        <span>{request.params.cwd ?? chat.cwd}</span>
+      </div>
+      <p>
+        <strong>
+          {request.kind === 'question'
+            ? '等待回答'
+            : network
+              ? '请求网络访问'
+              : isFiles
+                ? '准备修改文件'
+                : isPermissions
+                  ? '请求额外权限'
+                  : '准备执行命令'}
+        </strong>
+      </p>
+      <p>
+        原因：
+        {request.params.reason ||
+          (request.kind === 'question' ? request.prompt : 'Codex 未提供具体原因，请检查操作内容。')}
+      </p>
       {request.kind === 'approval' ? (
         <>
-          <pre>
-            {request.params.command ??
-              JSON.stringify(
-                request.params.permissions ?? request.params.changes ?? { reason: request.prompt },
-                null,
-                2,
-              )}
-          </pre>
+          {network ? (
+            <p className="approval-action">
+              {network.protocol ?? '网络'}://{network.host ?? '未知目标'}
+              {network.port ? ':' + network.port : ''}
+            </p>
+          ) : (
+            !isFiles &&
+            !isPermissions && (
+              <div>
+                <pre className="command-preview">
+                  {command.slice(0, 500)}
+                  {command.length > 500 ? '…' : ''}
+                </pre>
+                {command.length > 500 && (
+                  <details className="approval-details">
+                    <summary>展开完整命令</summary>
+                    <pre>{command}</pre>
+                  </details>
+                )}
+              </div>
+            )
+          )}
+          {isFiles && (
+            <p className="approval-action">
+              {request.params.grantRoot
+                ? `授权目录：${request.params.grantRoot}`
+                : '检查下方文件修改详情后再决定'}
+            </p>
+          )}
+          {isFiles && paths.length > 0 && (
+            <ul className="approval-paths">
+              {paths.map((path: string, i: number) => (
+                <li key={path + i}>{path}</li>
+              ))}
+            </ul>
+          )}
+          {(isFiles || isPermissions) && (
+            <details className="approval-details">
+              <summary>{isFiles ? '查看文件变更' : '查看权限明细'}</summary>
+              <pre>
+                {typeof request.params.changes === 'string'
+                  ? request.params.changes
+                  : JSON.stringify(
+                      request.params.permissions ??
+                        request.params.changes ?? { 提示: 'Codex 未返回变更详情' },
+                      null,
+                      2,
+                    )}
+              </pre>
+            </details>
+          )}
+          <label className="approval-scope">
+            批准范围
+            <select
+              aria-label="批准范围"
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+              disabled={busy}
+            >
+              <option value="accept">{isPermissions ? '当前轮次' : '仅本次操作'}</option>
+              {sessionAllowed && <option value="acceptForSession">此 Codex 会话的同类操作</option>}
+            </select>
+          </label>
+          <p className="scope-note">
+            {scope === 'acceptForSession'
+              ? '会话授权由 Codex 缓存；同一审批范围内的后续操作可能不再询问，进程重启后不保留。'
+              : isPermissions
+                ? '权限仅授予当前执行轮次。'
+                : '批准当前操作，后续请求仍需单独处理。'}
+          </p>
           <div className="request-actions">
             <button disabled={busy} onClick={() => submit('decline')}>
               拒绝
             </button>
-            <button className="primary" disabled={busy} onClick={() => submit('accept')}>
+            <button className="primary" disabled={busy} onClick={() => submit(scope)}>
               <Check size={15} />
-              {busy ? '提交中…' : '允许本次'}
+              {busy
+                ? '提交中…'
+                : scope === 'acceptForSession'
+                  ? '允许此会话范围'
+                  : isPermissions
+                    ? '允许当前轮次'
+                    : '允许本次'}
             </button>
           </div>
         </>
@@ -865,20 +1041,15 @@ function RequestCard({
     </section>
   );
 }
-function NewChat({
-  onCreate,
-  onError,
-}: {
-  onCreate: (c: Chat) => void;
-  onError: (v: string) => void;
-}) {
+function NewChat({ onCreate, favorites }: { onCreate: (c: Chat) => void; favorites: string[] }) {
   const [title, setTitle] = useState(''),
     [cwd, setCwd] = useState(''),
     [model, setModel] = useState(''),
     [models, setModels] = useState<Array<{ id: string; name: string }>>([]),
     [dirs, setDirs] = useState<Array<{ name: string; path: string }>>([]),
     [busy, setBusy] = useState(false),
-    [formError, setFormError] = useState('');
+    [formError, setFormError] = useState(''),
+    [savedDirs, setSavedDirs] = useState(favorites);
   useEffect(() => {
     api('/config')
       .then((c) => {
@@ -929,6 +1100,52 @@ function NewChat({
         主机工作目录
         <input value={cwd} onChange={(e) => setCwd(e.target.value)} required />
       </label>
+      <div className="favorite-directories">
+        <button
+          type="button"
+          disabled={!cwd}
+          onClick={async () => {
+            try {
+              setSavedDirs(
+                await api('/favorites', {
+                  operationId: operation(),
+                  path: cwd,
+                  saved: !savedDirs.includes(cwd),
+                }),
+              );
+            } catch (e) {
+              setFormError((e as Error).message);
+            }
+          }}
+        >
+          <Bookmark size={15} />
+          {savedDirs.includes(cwd) ? '取消收藏当前目录' : '收藏当前目录'}
+        </button>
+        {savedDirs.map((p) => (
+          <div key={p}>
+            <button type="button" onClick={() => browse(p)}>
+              <Folder size={14} />
+              <span>{p}</span>
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={`取消收藏 ${p}`}
+              onClick={async () => {
+                try {
+                  setSavedDirs(
+                    await api('/favorites', { operationId: operation(), path: p, saved: false }),
+                  );
+                } catch (e) {
+                  setFormError((e as Error).message);
+                }
+              }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
       <div className="directory-list">
         <button
           type="button"
