@@ -1,4 +1,4 @@
-import { resolve, join } from 'node:path';
+import { resolve, join, parse } from 'node:path';
 import { homedir, hostname } from 'node:os';
 import { Store } from './store.ts';
 import { PocketService } from './service.ts';
@@ -41,8 +41,9 @@ if (process.argv.includes('--pair') && password) {
       ? '主机密码登录已启用。'
       : '运行 npm run password:set 设置主机密码，然后重启服务。旧版配对仍可使用。',
   );
-  const roots = (process.env.POCKET_ROOTS ?? process.cwd())
+  const roots = (process.env.POCKET_ROOTS?.trim() || parse(process.cwd()).root)
     .split(';')
+    .map((p) => p.trim())
     .filter(Boolean)
     .map((p) => resolve(p));
   try {

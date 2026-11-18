@@ -276,7 +276,7 @@ export class PocketService {
     return actual;
   }
   async directories(path?: string) {
-    if (!path) return this.roots.map((path) => ({ name: basename(path), path }));
+    if (!path) return this.roots.map((path) => ({ name: basename(path) || path, path }));
     const actual = await this.directory(path);
     const children = await readdir(actual, { withFileTypes: true });
     return children

@@ -49,16 +49,16 @@ npm ci
 cp .env.example .env
 ```
 
-编辑 `.env`，填入真实存在的项目目录。例如，下面的路径需要换成你自己的：
+编辑 `.env`，默认开放全部工作目录，无需逐个添加项目：
 
 ```dotenv
 POCKET_HOST=127.0.0.1
 POCKET_PORT=4310
 POCKET_NAME=我的开发机
-POCKET_ROOTS=/home/me/projects;/home/me/work
+POCKET_ROOTS=/
 ```
 
-`POCKET_ROOTS` 是允许在网页中选择的目录范围，多个绝对路径用英文分号分隔。不设置时，只允许 Pocket 启动所在目录。第一次在本机使用时，保持 `POCKET_ORIGIN` 注释状态。
+`POCKET_ROOTS` 是工作目录范围。Linux 默认是 `/`（全部目录）；不设置或留空时同样使用文件系统根目录。实际访问仍受运行 Pocket 的系统用户权限限制，不会自动获得 root 权限。若希望限制到部分项目，可设置为 `/home/me/projects;/home/me/work`，多个绝对路径用英文分号分隔。第一次在本机使用时，保持 `POCKET_ORIGIN` 注释状态。
 
 ### 3. 设置这台主机的固定密码
 
@@ -130,7 +130,7 @@ POCKET_DESKTOP_SOCKET=/home/rocos/.codex/ipc/ipc.sock
 
 `CODEX_BIN` 仍用于本机聊天列表、历史读取及 Pocket 自建聊天。桌面同步的发消息、审批、停止通过 IPC 转交桌面端，不会再次 resume 该聊天或抢占写入锁。
 
-**看到“工作目录不在允许的项目范围内”：** 需要将该聊天实际工作目录加入 `.env` 的 `POCKET_ROOTS`，英文分号分隔，然后重启 Pocket。例如当前只允许 `/home/rocos/Documents/GitHub`，在 `/home/rocos` 中创建的聊天就不能控制。只加入你确实需要控制的目录；目录已删除时需先恢复目录。
+**看到“工作目录不在允许的项目范围内”：** 检查旧 `.env` 是否仍限制到某个项目目录。需要全部工作空间时，改为 `POCKET_ROOTS=/`，然后重启 Pocket；需要保留限制时，将目标目录加入列表（英文分号分隔）。目录已删除时仍需先恢复目录。
 
 | 页面状态 | 实际含义 |
 | --- | --- |
@@ -282,7 +282,7 @@ POCKET_ORIGIN=https://devbox.example.ts.net
 | `POCKET_PORT` | `4310`；更改时同步修改 Serve 的转发端口 |
 | `POCKET_NAME` | 系统主机名；可改成容易辨认的名称 |
 | `POCKET_ORIGIN` | 本地使用时不设置；远程使用时填准确的 HTTPS 来源 |
-| `POCKET_ROOTS` | 启动时的当前目录；多个允许的项目绝对路径用英文分号分隔 |
+| `POCKET_ROOTS` | 默认全部目录（Linux 为 `/`）；可用英文分号分隔的绝对路径列表限制范围 |
 | `POCKET_DATA_DIR` | `~/.local/share/codex-pocket`，存放 SQLite 等应用数据 |
 | `POCKET_AUTH_FILE` | 默认 `POCKET_DATA_DIR/auth.json`；保存密码哈希，建议使用仓库外绝对路径 |
 | `CODEX_BIN` | 从 `PATH` 查找 `codex`；后台运行时建议填绝对路径 |
@@ -361,7 +361,7 @@ npm run build
 | 看不到桌面端已有聊天 | 刷新网页后点击“刷新本机聊天”；确认 Pocket 与桌面端使用同一系统用户和 Codex 环境；更早聊天需加载更多 |
 | 已有聊天提示占用 | 先结束原端任务并释放聊天；必要时退出原端应用，随后再点击“在 Pocket 中继续” |
 | 提示 Codex 暂未就绪 | 在主机检查 `codex login status`、`CODEX_BIN` 和服务日志；修正后重启 Pocket |
-| 找不到目标项目目录 | 将真实目录加入 `POCKET_ROOTS` 并重启；网页不能越过配置的根目录或符号链接边界 |
+| 找不到目标项目目录 | 使用 `POCKET_ROOTS=/` 开放全部目录，或加入目标目录后重启；目录需存在且当前系统用户有访问权限 |
 | 页面无实时更新 | 查看连接状态；主机可能仍在执行，重连后核对记录，不要反复点击发送；重启服务会影响任务 |
 | 状态是排队中 | 同一目录可能已有任务；等待前一个任务结束，或选择另一个工作目录 |
 | 语音识别不可用 | 使用 HTTPS，检查麦克风权限及浏览器语音服务网络；仍不可用就用安卓键盘语音 |
