@@ -501,6 +501,22 @@ function App() {
         </div>
       </aside>
       <main className="main">
+        <div className="host-identity" aria-label="当前主机">
+          <button onClick={() => setPanel('hosts')}>
+            <Server size={14} />
+            <strong>{host?.name ?? '正在连接主机'}</strong>
+            <span>{host?.id.slice(0, 8)}</span>
+            <ChevronDown size={13} />
+          </button>
+          <button
+            onClick={() => setPanel('pending')}
+            disabled={!paired}
+            aria-label={`待处理列表，${waiting} 项`}
+          >
+            <ListTodo size={15} />
+            <span>待处理 {waiting}</span>
+          </button>
+        </div>
         <header className="chat-header">
           <button
             className="icon-button mobile-back"
@@ -542,22 +558,7 @@ function App() {
             <Server size={18} />
           </button>
         </header>
-        <div className="host-identity">
-          <button onClick={() => setPanel('hosts')}>
-            <Server size={14} />
-            <strong>{host?.name ?? '正在连接主机'}</strong>
-            <span>{host?.id.slice(0, 8)}</span>
-            <ChevronDown size={13} />
-          </button>
-          <button
-            onClick={() => setPanel('pending')}
-            disabled={!paired}
-            aria-label={`待处理列表，${waiting} 项`}
-          >
-            <ListTodo size={15} />
-            <span>待处理 {waiting}</span>
-          </button>
-        </div>
+
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
@@ -955,14 +956,19 @@ function RequestCard({
         <ShieldCheck size={18} />
         <strong>{actionTitle}</strong>
       </div>
-      <div className="request-context">
-        <strong>
-          {host.name} · {host.id.slice(0, 8)}
-        </strong>
-        <span>
-          <Folder size={13} /> {request.params.cwd ?? chat.cwd}
-        </span>
-      </div>
+      <dl className="approval-context">
+        <div>
+          <dt>主机</dt>
+          <dd>
+            {host.name}
+            <span>{host.id.slice(0, 8)}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>目录</dt>
+          <dd>{request.params.cwd ?? chat.cwd}</dd>
+        </div>
+      </dl>
       <p className="request-reason">
         {request.params.reason ||
           (request.kind === 'question' ? request.prompt : 'Codex 未提供具体原因，请检查操作内容。')}

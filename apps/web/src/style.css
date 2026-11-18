@@ -2095,3 +2095,310 @@ h1 {
     min-width: 0;
   }
 }
+
+/* Location stays in the top bar; chat actions stay beside the chat title. */
+:root {
+  --muted: #a9a9a9;
+  --faint: #969696;
+  --line: #2b2b2b;
+}
+.app {
+  background: #101010;
+  grid-template-columns: 268px minmax(0, 1fr);
+}
+.sidebar {
+  background: #101010;
+  border-right: 0;
+  padding: 20px 12px 12px;
+}
+.main {
+  background: #171717;
+  border-left: 1px solid #2b2b2b;
+}
+.host-identity {
+  background: #141414;
+  padding: 0 24px;
+  border-bottom: 1px solid #292929;
+}
+.host-identity button {
+  min-height: 44px;
+  color: #bdbdbd;
+}
+.host-identity strong {
+  color: #d9d9d9;
+}
+.chat-header {
+  border-bottom: 1px solid #292929;
+  min-height: 80px;
+  padding: 14px 28px;
+}
+.chat-header h1 {
+  font-size: 18px;
+  letter-spacing: -0.35px;
+}
+.header-meta {
+  color: #a9a9a9;
+  font-size: 12px;
+}
+.brand {
+  font-size: 17px;
+  letter-spacing: -0.4px;
+}
+.host-switch {
+  border: 0;
+  background: #1c1c1c;
+  border-radius: 7px;
+  margin-bottom: 10px;
+}
+.task-inbox {
+  border-radius: 7px;
+}
+.inbox-filters {
+  border-bottom: 1px solid #2b2b2b;
+  padding-bottom: 4px;
+}
+.inbox-filters button {
+  border-radius: 5px;
+}
+.inbox-group h2 {
+  font-weight: 500;
+  color: #a3a3a3;
+}
+.chat-row {
+  color: #c4c4c4;
+  border-radius: 6px;
+}
+.chat-row.selected {
+  background: #292929;
+  color: #f5f5f5;
+}
+.chat-row-heading time {
+  color: #a0a0a0;
+}
+.chat-row .row-meta {
+  margin-top: 7px;
+}
+.messages {
+  max-width: 820px;
+  padding: 28px 32px 32px;
+}
+.message-label {
+  font-weight: 500;
+  color: #bababa;
+}
+.message.assistant .message-label {
+  color: #e8e8e8;
+}
+.message.user .message-body {
+  background: #282828;
+}
+.request-card {
+  background: #202020;
+  border: 1px solid #41403b;
+  border-radius: 10px;
+  padding: 20px;
+  margin: 18px 0;
+}
+.request-heading {
+  font-size: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #353535;
+}
+.approval-context {
+  margin: 14px 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.approval-context > div {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
+  margin: 5px 0;
+}
+.approval-context dt {
+  color: var(--muted);
+}
+.approval-context dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #dedede;
+}
+.approval-context dd span {
+  margin-left: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.request-card .command-preview {
+  background: #161616;
+  border-color: #373737;
+  border-radius: 6px;
+  color: #ece8df;
+}
+.request-card .request-reason {
+  color: #d0d0d0;
+  font-size: 13px;
+}
+.request-card .approval-scope {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 18px;
+  color: #bdbdbd;
+}
+.request-card .approval-scope select {
+  margin: 0;
+  font-size: 13px;
+  background: #262626;
+  border-color: #484848;
+}
+.request-card .scope-note {
+  font-size: 12px;
+  line-height: 1.8;
+}
+.request-actions {
+  border-top: 1px solid #353535;
+  padding-top: 12px;
+  margin-top: 14px;
+}
+.request-actions .primary {
+  min-width: 112px;
+  justify-content: center;
+  border-radius: 6px;
+}
+.composer-wrap {
+  max-width: 820px;
+  padding-inline: 32px;
+}
+.composer {
+  background: #222;
+  border-color: #454545;
+  border-radius: 12px;
+  padding: 8px 12px;
+}
+.composer textarea {
+  padding: 10px 4px;
+}
+.composer .composer-toolbar {
+  border-color: #363636;
+}
+.composer-note {
+  color: #aaa;
+}
+.tool-entry {
+  background: #202020;
+  border: 1px solid #313131;
+  border-radius: 6px;
+}
+.modal {
+  background: #202020;
+  border: 1px solid #454545;
+  border-radius: 12px;
+}
+.modal > header {
+  border-bottom: 1px solid #353535;
+  padding-bottom: 14px;
+  margin-bottom: 22px;
+}
+.modal h2 {
+  font-size: 18px;
+  letter-spacing: -0.3px;
+}
+.modal input,
+.modal select {
+  background: #191919;
+  border-color: #494949;
+}
+.welcome {
+  padding-top: 52px;
+}
+.workspace-counts {
+  border-color: #353535;
+}
+.recent-chats button {
+  border-color: #353535;
+  min-height: 72px;
+}
+.pair-screen form {
+  background: #202020;
+  border-color: #424242;
+}
+@media (max-width: 760px) {
+  .app {
+    display: block;
+  }
+  .sidebar {
+    padding: max(16px, env(safe-area-inset-top)) 16px 10px;
+  }
+  .main {
+    border: 0;
+  }
+  .host-identity {
+    padding: 0 14px;
+    min-height: 44px;
+  }
+  .host-identity button {
+    font-size: 12px;
+  }
+  .chat-header {
+    padding: 7px 10px;
+    min-height: 73px;
+    gap: 7px;
+  }
+  .chat-header h1 {
+    font-size: 16px;
+  }
+  .header-meta {
+    font-size: 11px;
+  }
+  .messages {
+    padding: 18px 16px 20px;
+  }
+  .request-card {
+    padding: 16px;
+  }
+  .request-heading {
+    font-size: 16px;
+  }
+  .approval-context {
+    margin-block: 11px;
+  }
+  .request-card .approval-scope {
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .request-card .approval-scope select {
+    font-size: 13px;
+    min-height: 44px;
+  }
+  .request-actions {
+    padding-top: 10px;
+    margin-top: 12px;
+  }
+  .composer-wrap {
+    padding-inline: 10px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .composer {
+    padding: 7px 10px;
+  }
+  .composer textarea {
+    min-height: 50px;
+  }
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 10px;
+  }
+  .modal {
+    border-radius: 16px;
+    padding: 20px;
+    max-height: 88dvh;
+  }
+}
+
+/* Keep composer controls touchable on compact tablets as well as phones. */
+@media (max-width: 1100px), (pointer: coarse) {
+  .composer-toolbar select,
+  .composer-toolbar button {
+    min-height: 44px;
+  }
+}
