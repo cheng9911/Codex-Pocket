@@ -172,8 +172,13 @@ export const english: Record<string, string> = {
   '语音识别无法启动，请使用键盘语音。':
     'Speech recognition could not start. Use keyboard dictation.',
   结束识别: 'Stop dictation',
+  '正在结束识别…': 'Finishing dictation…',
   语音输入: 'Voice input',
   '正在听…识别结果仅填入草稿': 'Listening… Speech is added to your draft only.',
+  '没有识别到文字，请重试或使用键盘语音。':
+    'No speech was recognized. Try again or use keyboard dictation.',
+  '已将临时识别结果填入草稿，请核对文字。':
+    'A partial transcript was added to your draft. Check the wording.',
   可使用键盘语音: 'Keyboard dictation is available',
   '草稿已保存在此浏览器，未发送到主机。':
     'Draft saved in this browser. It has not been sent to the host.',

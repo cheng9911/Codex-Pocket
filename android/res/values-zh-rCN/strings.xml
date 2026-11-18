@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="loading">正在加载 Pocket</string>
+    <string name="offline_message">暂时无法连接 Pocket。请检查网络后重试。</string>
+    <string name="retry">重试</string>
+</resources>

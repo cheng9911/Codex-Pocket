@@ -2,7 +2,7 @@
 
 Codex Pocket 是自托管的 Codex 网页控制台。安卓手机和电脑都能查看实时任务、发送消息、审批操作、回答问题或停止当前轮次。多台主机可以分别部署，聊天、代码和 Codex 登录状态留在各自主机。
 
-**远程使用时，在浏览器打开自己的 Pocket HTTPS 地址，并输入这台主机的密码。** 主机通过 Cloudflare Tunnel 提供访问，手机无需安装 Tailscale 或 ChatGPT。当前提供网页，Android APK 尚未发布。
+**远程使用时，在浏览器打开自己的 Pocket HTTPS 地址，并输入这台主机的密码。** 主机通过 Cloudflare Tunnel 提供访问，手机无需安装 Tailscale 或 ChatGPT。固定连接 `pocket.jcsun.cc` 的安装包见 [GitHub Releases](https://github.com/cheng9911/Codex-Pocket/releases)。其他自托管主机可以[构建 Android 测试 APK](#android-测试-apk)。
 
 ## 使用路线
 
@@ -266,6 +266,21 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://pocket.example.com/api/snapsho
 
 可把这个地址加入书签或浏览器支持的主屏幕快捷方式。主机需要保持联网、唤醒且 Pocket 和连接器均在运行。公网部署和设备实测进度见[验证记录](docs/verification.md#cloudflare-tunnel-部署)。
 
+## Android 测试 APK
+
+在 [GitHub Releases](https://github.com/cheng9911/Codex-Pocket/releases) 展开测试版本的 **Assets**，下载 `Codex-Pocket-0.1.0-test.apk`。安装包需要 Android 8.0 或更新版本，打开后直接连接 `https://pocket.jcsun.cc/`。首次在应用内输入主机密码并勾选「记住此设备」，应用会保存自己的登录会话。重新打开后的授权有效期与网页相同。听写时点击输入框，使用系统键盘上的麦克风。
+
+### 构建自己的安装包
+
+在 Linux 上安装 JDK、Android SDK Platform 35 和 Build Tools 35.0.0。构建另一个自托管域名的版本时，在 `android/src/cc/jcsun/codexpocket/MainActivity.java` 修改 `HOST`。在仓库根目录执行：
+
+```bash
+export ANDROID_HOME=/path/to/android-sdk
+bash android/build-apk.sh
+```
+
+签名后的安装包默认输出到 `artifacts/android/Codex-Pocket-0.1.0-test.apk`。如需保存到其他位置，可以将 APK 文件路径作为脚本参数。脚本在 `~/.local/share/codex-pocket/android-signing/` 保存测试签名密钥。后续测试版升级请复用这个目录的签名。Android 可能会提示允许当前下载来源安装应用，安装后可从桌面打开 **Codex Pocket**。
+
 ## 消息与审批
 
 ### 选择指令何时发送
@@ -313,7 +328,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://pocket.example.com/api/snapsho
 
 **语言：** 简体中文和英文即时切换，未登录也能设置。首次访问跟随浏览器的英文偏好，其余语言回退中文。选择保存在当前主机地址的浏览器存储中，不跨主机自动同步。聊天内容、主机名称、目录和 Codex 输出保留原文；时间按所选语言格式和设备时区显示。
 
-**语音：** 点击输入区麦克风并允许浏览器麦克风权限。识别语言跟随界面设置：中文 `zh-CN`，英文 `en-US`。结果仅填入草稿，由你确认发送。远程页面需要 HTTPS；不支持或服务无法连接时，使用安卓键盘的麦克风。Pocket 不部署本地语音模型，也不使用 Codex 账号调用转写接口；浏览器可能把音频交给自身在线服务。
+**语音：** 点击输入区麦克风并允许浏览器麦克风权限，说完再点变成方形的按钮。识别语言跟随界面设置，中文为 `zh-CN`，英文为 `en-US`。文字只填入草稿，由你确认发送。如果浏览器没给出最终结果，Pocket 会保留已有的临时文字并提示核对。远程页面需要 HTTPS。浏览器不支持、语音服务不可达或没有返回文字时，可点击输入框，使用安卓键盘上的麦克风。Pocket 使用浏览器自带的语音识别，浏览器可能把音频交给自己的在线服务。
 
 **额度：** 显示当前主机 Codex 实际返回的账号额度及重置时间，不估算还能发送多少条消息。API Key 或自定义供应商可能不返回额度信息。
 

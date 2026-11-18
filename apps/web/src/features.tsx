@@ -10,9 +10,11 @@ import type {
   Snapshot,
 } from '../../../packages/types.ts';
 import { api, ApiError, operation } from './api.ts';
+import { captureSpeech, type Recognition } from './speech.ts';
 
 type Draft = { text: string; unsent: boolean; uncertain: boolean };
 const emptyDraft = (): Draft => ({ text: '', unsent: false, uncertain: false });
+const keyboardDictationOnly = /\bCodexPocketAndroid\//.test(navigator.userAgent);
 function loadDraft(key: string): Draft {
   try {
     const value = JSON.parse(localStorage.getItem(key) ?? 'null');
@@ -21,108 +23,92 @@ function loadDraft(key: string): Draft {
   } catch {}
   return emptyDraft();
 }
-type Recognition = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: any) => void) | null;
-  onerror: ((event: { error: string }) => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  stop(): void;
-  abort(): void;
-};
 function SpeechInput({ onText, disabled }: { onText: (text: string) => void; disabled: boolean }) {
-  const [listening, setListening] = useState(false),
+  const [phase, setPhase] = useState<'idle' | 'listening' | 'stopping'>('idle'),
     [message, setMessage] = useState(''),
     [interim, setInterim] = useState('');
-  const recognition = useRef<Recognition | null>(null),
+  const recognition = useRef<ReturnType<typeof captureSpeech> | null>(null),
     callback = useRef(onText);
   callback.current = onText;
-  const Constructor =
-    (
-      window as unknown as {
-        SpeechRecognition?: new () => Recognition;
-        webkitSpeechRecognition?: new () => Recognition;
-      }
-    ).SpeechRecognition ??
-    (window as unknown as { webkitSpeechRecognition?: new () => Recognition })
-      .webkitSpeechRecognition;
-  useEffect(
-    () => () => {
-      const r = recognition.current;
-      if (r) {
-        r.onend = r.onresult = r.onerror = null;
-        r.abort();
-      }
-    },
-    [],
-  );
+  const browser = window as Window & {
+    SpeechRecognition?: new () => Recognition;
+    webkitSpeechRecognition?: new () => Recognition;
+  };
+  const Constructor = browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
+  useEffect(() => () => recognition.current?.cancel(), []);
   useEffect(() => {
-    if (disabled) recognition.current?.abort();
+    if (!disabled || !recognition.current) return;
+    recognition.current.cancel();
+    recognition.current = null;
+    setPhase('idle');
+    setInterim('');
   }, [disabled]);
   function toggle() {
-    if (listening) {
-      recognition.current?.stop();
+    if (recognition.current) {
+      setPhase('stopping');
+      recognition.current.stop();
       return;
     }
     if (!Constructor || !window.isSecureContext) {
       setMessage('此浏览器暂不支持语音识别，请使用安卓键盘的麦克风输入。远程网页需要 HTTPS。');
       return;
     }
-    const r = new Constructor();
-    recognition.current = r;
-    r.lang = speechLocale();
-    r.continuous = false;
-    r.interimResults = true;
-    r.onresult = (e) => {
-      let preview = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) callback.current(e.results[i][0].transcript);
-        else preview += e.results[i][0].transcript;
-      }
-      setInterim(preview);
-    };
-    r.onerror = (e) =>
-      setMessage(
-        e.error === 'not-allowed'
-          ? '未获得麦克风权限，可在浏览器设置中允许，或使用键盘语音。'
-          : e.error === 'network'
-            ? '语音服务网络不可用，请使用键盘语音。'
-            : '未能完成识别，请重试或使用键盘语音。',
-      );
-    r.onend = () => {
-      setListening(false);
-      setInterim('');
-    };
     try {
-      r.start();
-      setListening(true);
+      const session = captureSpeech(new Constructor(), speechLocale(), {
+        preview: setInterim,
+        completed({ text, usedInterim, error }) {
+          recognition.current = null;
+          setPhase('idle');
+          setInterim('');
+          if (text) {
+            callback.current(text);
+            if (usedInterim) setMessage('已将临时识别结果填入草稿，请核对文字。');
+          } else if (error === 'not-allowed' || error === 'service-not-allowed') {
+            setMessage('未获得麦克风权限，可在浏览器设置中允许，或使用键盘语音。');
+          } else if (error === 'network') {
+            setMessage('语音服务网络不可用，请使用键盘语音。');
+          } else if (error === 'start-failed') {
+            setMessage('语音识别无法启动，请使用键盘语音。');
+          } else if (error && error !== 'no-speech') {
+            setMessage('未能完成识别，请重试或使用键盘语音。');
+          } else {
+            setMessage('没有识别到文字，请重试或使用键盘语音。');
+          }
+        },
+      });
+      recognition.current = session;
+      setPhase('listening');
       setMessage('');
+      session.start();
     } catch {
       setMessage('语音识别无法启动，请使用键盘语音。');
     }
   }
+  const active = phase !== 'idle';
+  const label = phase === 'stopping' ? '正在结束识别…' : active ? '结束识别' : '语音输入';
   return (
-    <div className="speech-input">
-      <button
-        type="button"
-        className={'voice-button ' + (listening ? 'listening' : '')}
-        title={listening ? t('结束识别') : t('语音输入')}
-        onClick={toggle}
-        disabled={disabled}
-        aria-pressed={listening}
-      >
-        {listening ? <Square size={14} /> : <Mic size={15} />}
-        <span className="sr-only">{listening ? t('结束识别') : t('语音输入')}</span>
-      </button>
-      {(listening || message) && (
+    <>
+      <div className="speech-input">
+        <button
+          type="button"
+          className={'voice-button ' + (active ? 'listening' : '')}
+          title={t(label)}
+          onClick={toggle}
+          disabled={disabled || phase === 'stopping'}
+          aria-pressed={active}
+        >
+          {active ? <Square size={14} /> : <Mic size={15} />}
+          <span className="sr-only">{t(label)}</span>
+        </button>
+      </div>
+      {(active || message || !Constructor) && (
         <span className="voice-status" role="status">
-          {t(message) || interim || t('正在听…识别结果仅填入草稿')}
+          {phase === 'stopping'
+            ? t(label)
+            : t(message) || interim || t(Constructor ? '正在听…识别结果仅填入草稿' : '可使用键盘语音')}
         </span>
       )}
-      {!Constructor && !message && <span className="voice-status">{t('可使用键盘语音')}</span>}
-    </div>
+    </>
   );
 }
 export function MessageComposer({
@@ -270,7 +256,7 @@ export function MessageComposer({
             )}
           </div>
         )}
-        <div className="composer-toolbar">
+        <div className={'composer-toolbar' + (keyboardDictationOnly ? ' keyboard-dictation' : '')}>
           <div className="delivery-row">
             <label>
               <span className="sr-only">{t('消息发送方式')}</span>
@@ -302,16 +288,18 @@ export function MessageComposer({
             )}
           </div>
 
-          <SpeechInput
-            disabled={sending}
-            onText={(text) =>
-              update((d) => ({
-                ...d,
-                text: (d.text + (d.text ? ' ' : '') + text).slice(0, 30000),
-                unsent: true,
-              }))
-            }
-          />
+          {!keyboardDictationOnly && (
+            <SpeechInput
+              disabled={sending}
+              onText={(text) =>
+                update((d) => ({
+                  ...d,
+                  text: (d.text + (d.text ? ' ' : '') + text).slice(0, 30000),
+                  unsent: true,
+                }))
+              }
+            />
+          )}
           <button
             className="send-intent"
             disabled={

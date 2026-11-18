@@ -2074,6 +2074,9 @@ h1 {
   gap: 5px;
   padding-top: 5px;
 }
+.composer .composer-toolbar.keyboard-dictation {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
 .composer-toolbar .delivery-row {
   display: flex;
   align-items: center;
@@ -2094,17 +2097,10 @@ h1 {
 .composer-toolbar .speech-input {
   display: block;
 }
-.composer-toolbar:has(.voice-status) {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-.composer-toolbar:has(.voice-status) .speech-input {
-  grid-row: 2;
-  grid-column: 1/-1;
-  display: flex;
-  flex-wrap: nowrap;
-}
 .composer-toolbar .voice-status {
-  flex: 1;
+  grid-row: 2;
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
   padding: 0;
 }
 @media (max-width: 760px) {
