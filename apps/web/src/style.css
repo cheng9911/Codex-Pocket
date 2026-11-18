@@ -2480,3 +2480,59 @@ html[lang='en'] .approval-context > div {
   font-size: 14px;
   font-weight: 500;
 }
+
+.local-list-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.local-list-error {
+  padding: 8px 12px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.local-history-note {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  font-size: 14px;
+}
+.local-history-note > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.local-history-note p,
+.local-continue p {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 8px 0 12px;
+}
+.local-history-note small {
+  color: var(--muted);
+  display: block;
+  margin-bottom: 8px;
+}
+.local-history-note > button {
+  min-height: 44px;
+}
+.local-continue {
+  width: min(100%, 840px);
+  margin: 0 auto;
+  padding: 16px 24px 24px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+@media (max-width: 640px) {
+  .local-continue {
+    padding: 12px 16px 20px;
+  }
+  .local-continue .primary {
+    width: 100%;
+  }
+}

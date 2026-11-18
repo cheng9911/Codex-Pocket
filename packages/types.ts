@@ -1,4 +1,5 @@
 export type ChatStatus =
+  | 'history'
   | 'idle'
   | 'running'
   | 'queued'
@@ -11,6 +12,11 @@ export type ChatStatus =
 export interface Chat {
   id: string;
   nativeId?: string;
+  source?: 'codex';
+  control?: 'history' | 'pocket';
+  historyMode?: string;
+  acceptsInput?: boolean;
+  customTitle?: boolean;
   title: string;
   pinned?: boolean;
   cwd: string;

@@ -3,6 +3,8 @@ import readline from 'node:readline';
 import { randomUUID } from 'node:crypto';
 const chats = new Map(),
   approvals = new Map();
+const histories = new Map(),
+  calls = [];
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\n');
 const event = (method, params) => send({ method, params });
 function finish(threadId, turnId, status = 'completed', text = 'POCKET_OK') {
@@ -16,12 +18,86 @@ function finish(threadId, turnId, status = 'completed', text = 'POCKET_OK') {
     turnId,
     item: { id, type: 'agentMessage', text, status: 'completed' },
   });
+  const history = histories.get(threadId);
+  if (history) {
+    const turn = history.find((t) => t.id === turnId);
+    if (turn) {
+      turn.status = status;
+      turn.items.push({ id, type: 'agentMessage', text });
+    }
+  }
   c.turnId = null;
   event('turn/completed', { threadId, turn: { id: turnId, status } });
 }
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const m = JSON.parse(line);
   const p = m.params ?? {};
+  if (m.method) calls.push(m.method);
+  if (m.method === 'test/seed') {
+    for (const c of p.chats) {
+      chats.set(c.id, { ...c, turnId: null });
+      histories.set(c.id, c.turns ?? []);
+    }
+    send({ id: m.id, result: {} });
+    return;
+  }
+  if (m.method === 'test/stats') {
+    send({ id: m.id, result: { calls } });
+    return;
+  }
+  if (m.method === 'thread/list') {
+    const rows = [...chats.values()].filter((c) => c.source);
+    const offset = Number(p.cursor ?? 0),
+      limit = p.limit ?? 50;
+    send({
+      id: m.id,
+      result: {
+        data: rows.slice(offset, offset + limit),
+        nextCursor: offset + limit < rows.length ? String(offset + limit) : null,
+      },
+    });
+    return;
+  }
+  if (m.method === 'thread/read') {
+    const c = chats.get(p.threadId);
+    send({
+      id: m.id,
+      result: {
+        thread: {
+          ...c,
+          status: { type: 'notLoaded' },
+          turns: p.includeTurns ? (histories.get(p.threadId) ?? []) : [],
+        },
+      },
+    });
+    return;
+  }
+  if (m.method === 'thread/turns/list') {
+    const rows = [...(histories.get(p.threadId) ?? [])].reverse(),
+      offset = Number(p.cursor ?? 0),
+      limit = p.limit ?? 10;
+    send({
+      id: m.id,
+      result: {
+        data: rows.slice(offset, offset + limit),
+        nextCursor: offset + limit < rows.length ? String(offset + limit) : null,
+      },
+    });
+    return;
+  }
+  if (m.method === 'thread/loaded/list') {
+    send({
+      id: m.id,
+      result: { data: [...chats.values()].filter((c) => !c.unsubscribed).map((c) => c.id) },
+    });
+    return;
+  }
+  if (m.method === 'thread/unsubscribe') {
+    if (chats.has(p.threadId)) chats.get(p.threadId).unsubscribed = true;
+    send({ id: m.id, result: { status: 'unsubscribed' } });
+    return;
+  }
+
   if (!m.method) {
     const a = approvals.get(m.id);
     if (a) {
@@ -95,6 +171,11 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     return;
   }
   if (m.method === 'thread/resume') {
+    if (chats.has(p.threadId)) chats.get(p.threadId).unsubscribed = false;
+    if (chats.get(p.threadId)?.locked) {
+      send({ id: m.id, error: { code: -32600, message: 'thread already has an active writer' } });
+      return;
+    }
     send({ id: m.id, result: { thread: { id: p.threadId } } });
     if (!chats.has(p.threadId)) chats.set(p.threadId, { id: p.threadId, turnId: null });
     return;
@@ -106,6 +187,12 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     send({ id: m.id, result: { turn: { id: turnId, status: 'inProgress' } } });
     event('turn/started', { threadId: p.threadId, turn: { id: turnId } });
     const text = p.input[0].text;
+    histories.get(p.threadId)?.push({
+      id: turnId,
+      status: 'inProgress',
+      startedAt: Date.now() / 1000,
+      items: [{ id: 'user-' + turnId, type: 'userMessage', content: [{ type: 'text', text }] }],
+    });
     if (text === 'exit') {
       process.exit(2);
       return;

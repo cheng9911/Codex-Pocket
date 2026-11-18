@@ -17,6 +17,7 @@
     "verify:live": "tsx scripts/verify-live.ts",
     "pair": "tsx apps/server/src/index.ts --pair",
     "verify:vendor": "tsx scripts/verify-vendor.ts",
+    "verify:local": "tsx scripts/verify-local-chats.ts",
     "verify:controls": "tsx scripts/verify-controls.ts",
     "preview:test": "tsx scripts/preview-test.ts",
     "service:install": "tsx scripts/install-service.ts",

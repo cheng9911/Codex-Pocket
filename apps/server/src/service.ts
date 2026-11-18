@@ -17,6 +17,7 @@ import type {
   AccountUsage,
 } from '../../../packages/types.ts';
 import { Store, PocketError } from './store.ts';
+import { LocalChats, nativeEntryId } from './local-chats.ts';
 
 export interface AgentTransport {
   request<T = WireParams>(method: string, params?: unknown): Promise<T>;
@@ -42,6 +43,8 @@ export class PocketService {
     error: null,
   };
   private usageRefresh?: Promise<AccountUsage>;
+  local: LocalChats;
+  private continuing = new Set<string>();
   private loaded = new Set<string>();
   private liveRequests = new Map<string, Resolver>();
   private deltas = new Map<string, Entry>();
@@ -52,6 +55,10 @@ export class PocketService {
     public store: Store,
     public host: HostInfo,
   ) {
+    this.local = new LocalChats(store, () => this.agent());
+    for (const chat of store.chats())
+      if (chat.source === 'codex')
+        store.putChat({ ...chat, control: 'history', status: 'history', turnId: null });
     this.markUncertainSends();
     for (const c of store.chats())
       if (active(c))
@@ -154,7 +161,7 @@ export class PocketService {
     if (patch.title !== undefined && (!patch.title.trim() || patch.title.length > 120))
       throw new PocketError(400, '聊天名称需要 1 至 120 个字符');
     return this.store.patchChat(id, {
-      ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
+      ...(patch.title !== undefined ? { title: patch.title.trim(), customTitle: true } : {}),
       ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
     });
   }
@@ -316,11 +323,99 @@ export class PocketService {
     this.store.putChat(chat);
     return chat;
   }
+  async continueLocal(id: string) {
+    const chat = this.store.chat(id);
+    if (chat.source !== 'codex') throw new PocketError(400, '请选择本机已有聊天');
+    if (this.continuing.has(id)) throw new PocketError(409, '聊天正在连接，请稍后');
+    if (chat.control === 'pocket' && this.loaded.has(id)) return chat;
+    if (chat.acceptsInput === false) throw new PocketError(409, '此聊天不接受直接输入');
+    this.continuing.add(id);
+    try {
+      const cwd = await this.directory(chat.cwd);
+      const metadata = await this.agent().request('thread/read', { threadId: chat.nativeId });
+      if (metadata.thread.cwd !== chat.cwd)
+        throw new PocketError(409, '工作目录已改变，请刷新聊天列表');
+      if (
+        metadata.thread.canAcceptDirectInput === false ||
+        metadata.thread.status?.type === 'active'
+      )
+        throw new PocketError(409, '聊天仍在其他客户端执行，请先在原端结束任务');
+      const result = await this.agent().request('thread/resume', {
+        threadId: chat.nativeId,
+        excludeTurns: true,
+        cwd,
+        approvalPolicy: 'on-request',
+        sandbox: 'workspace-write',
+      });
+      if (result.thread?.id !== chat.nativeId) throw new Error('恢复聊天标识不一致');
+      this.loaded.add(id);
+      this.local.invalidate(id);
+      return this.store.patchChat(id, {
+        control: 'pocket',
+        cwd,
+        status: 'idle',
+        turnId: null,
+        error: null,
+        model: result.model ?? chat.model,
+      });
+    } catch (e) {
+      if (/active writer|already.*loaded|already.*running/i.test(errorText(e)))
+        throw new PocketError(
+          409,
+          '聊天被桌面端或其他进程占用，请在原端结束任务并释放聊天后重试；必要时退出原端应用',
+        );
+      throw e;
+    } finally {
+      this.continuing.delete(id);
+    }
+  }
+  async releaseLocal(id: string) {
+    const chat = this.store.chat(id);
+    if (chat.source !== 'codex') throw new PocketError(400, '请选择本机已有聊天');
+    if (active(chat) || this.queued().some((row) => row.chatId === id) || this.continuing.has(id))
+      throw new PocketError(409, '请先停止当前任务并清空排队消息');
+    this.continuing.add(id);
+    try {
+      if (this.loaded.has(id)) {
+        await this.agent().request('thread/unsubscribe', { threadId: chat.nativeId });
+        // Unsubscribe acknowledges removal of the subscription, not release of its writer lock.
+        const deadline = Date.now() + 10000;
+        for (;;) {
+          const loaded = await this.agent().request('thread/loaded/list', {});
+          if (!loaded.data?.includes(chat.nativeId)) break;
+          if (Date.now() >= deadline) throw new PocketError(409, '聊天仍在释放中，请稍后重试');
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+      this.loaded.delete(id);
+      this.local.invalidate(id);
+      return this.store.patchChat(id, {
+        control: 'history',
+        status: 'history',
+        turnId: null,
+        error: null,
+      });
+    } catch (error) {
+      // An unsubscribe may already have succeeded. Never leave an apparently
+      // controllable chat whose subscription and writer ownership are uncertain.
+      this.loaded.delete(id);
+      this.store.patchChat(id, {
+        control: 'history',
+        status: 'history',
+        turnId: null,
+        error: errorText(error),
+      });
+      throw error;
+    } finally {
+      this.continuing.delete(id);
+    }
+  }
   private async load(chat: Chat) {
     if (!this.loaded.has(chat.id)) {
       try {
         await this.agent().request('thread/resume', {
           threadId: chat.nativeId ?? chat.id,
+          excludeTurns: true,
           cwd: chat.cwd,
           approvalPolicy: 'on-request',
           sandbox: 'workspace-write',
@@ -355,6 +450,11 @@ export class PocketService {
   ) {
     this.agent();
     const chat = this.store.chat(id);
+    if (
+      chat.source === 'codex' &&
+      (chat.control !== 'pocket' || !this.loaded.has(id) || this.continuing.has(id))
+    )
+      throw new PocketError(409, '请先选择在 Pocket 中继续此聊天');
     if (!this.allowed(chat.cwd)) throw new PocketError(403, '工作目录不在允许的项目范围内');
     if (delivery === 'steer' && (!chat.turnId || !active(chat) || chat.status === 'stopping'))
       throw new PocketError(409, '当前没有可追加指令的任务，请改为发送新任务');
@@ -459,6 +559,8 @@ export class PocketService {
   }
   async stop(id: string) {
     const chat = this.store.chat(id);
+    if (chat.source === 'codex' && chat.control !== 'pocket')
+      throw new PocketError(409, '历史查看不能停止其他客户端的任务');
     const rows = this.store.db
       .prepare('SELECT operation_id FROM queue WHERE chat_id=?')
       .all(id) as any[];
@@ -566,12 +668,14 @@ export class PocketService {
       params: {
         ...params,
         cwd: params.cwd ?? chat.cwd,
-        command: params.command ?? this.store.entry(`${chat.id}:${params.itemId}`)?.command,
+        command:
+          params.command ??
+          this.store.entry(nativeEntryId(chat, params.turnId, params.itemId))?.command,
         changes:
           params.changes ??
           (method === 'item/fileChange/requestApproval'
-            ? (this.store.entry(`${chat.id}:${params.itemId}`)?.changes ??
-              this.store.entry(`${chat.id}:${params.itemId}`)?.text)
+            ? (this.store.entry(nativeEntryId(chat, params.turnId, params.itemId))?.changes ??
+              this.store.entry(nativeEntryId(chat, params.turnId, params.itemId))?.text)
             : undefined),
       },
       status: 'pending',
@@ -610,12 +714,13 @@ export class PocketService {
     }
     if (!p.threadId) return;
     const chat = this.store.chats().find((c) => (c.nativeId ?? c.id) === p.threadId);
-    if (!chat) return;
+    if (!chat || (chat.source === 'codex' && chat.control !== 'pocket')) return;
     const chatId = chat.id;
     if (method === 'turn/started')
       this.store.patchChat(chatId, { turnId: p.turn.id, status: 'running', error: null });
     else if (method === 'turn/completed') {
       this.flushDeltas();
+      this.local.invalidate(chatId);
       this.expire(chatId);
       const status =
         p.turn.status === 'completed'
@@ -644,7 +749,7 @@ export class PocketService {
     } else if (method === 'item/started' || method === 'item/completed') {
       const item = p.item;
       if (!item?.id || item.type === 'userMessage') return;
-      const id = `${chatId}:${item.id}`;
+      const id = nativeEntryId(chat, p.turnId, item.id);
       this.flushDeltas();
       const old = this.store.entry(id);
       const kind: Entry['kind'] =
@@ -676,7 +781,7 @@ export class PocketService {
         changes: item.changes ?? old?.changes,
       });
     } else if (['item/agentMessage/delta', 'item/commandExecution/outputDelta'].includes(method)) {
-      const id = `${chatId}:${p.itemId}`;
+      const id = nativeEntryId(chat, p.turnId, p.itemId);
       const old = this.deltas.get(id) ?? this.store.entry(id);
       const entry: Entry = old ?? {
         id,

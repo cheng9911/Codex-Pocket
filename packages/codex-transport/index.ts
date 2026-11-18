@@ -31,7 +31,7 @@ export async function openTransport(options: TransportOptions = {}) {
     const child = yield* spawner.spawn(
       ChildProcess.make(
         options.command ?? process.env.CODEX_BIN ?? 'codex',
-        options.args ?? ['app-server', '--listen', 'stdio://'],
+        options.args ?? ['app-server', '--listen', 'stdio://', '-c', 'thread_unload_delay_secs=0'],
         {
           cwd: options.cwd,
           env: options.env,

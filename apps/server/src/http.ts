@@ -125,8 +125,29 @@ export function createHttp(
       await service.directories(typeof req.query.path === 'string' ? req.query.path : undefined),
     ),
   );
-  app.get('/api/chats/:id/entries', (req, res) => {
-    service.store.chat(req.params.id);
+  app.get('/api/local-chats', async (req, res) => {
+    const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
+    if (cursor && cursor.length > 4096) throw new PocketError(400, '聊天游标无效');
+    res.json(await service.local.list(cursor));
+  });
+  for (const action of ['continue', 'release'] as const)
+    app.post(`/api/chats/:id/${action}`, async (req, res) => {
+      const id = req.params.id;
+      res.json(
+        await service.operation(String(req.body.operationId), { type: action, id }, () =>
+          action === 'continue' ? service.continueLocal(id) : service.releaseLocal(id),
+        ),
+      );
+    });
+  app.get('/api/chats/:id/entries', async (req, res) => {
+    const chat = service.store.chat(req.params.id);
+    if (chat.source === 'codex') {
+      const cursor =
+        typeof req.query.nativeCursor === 'string' ? req.query.nativeCursor : undefined;
+      if (cursor && cursor.length > 4096) throw new PocketError(400, '历史游标无效');
+      res.json(await service.local.history(chat, cursor));
+      return;
+    }
     const before = Number(req.query.before);
     const entries = service.store.entries(
       req.params.id,

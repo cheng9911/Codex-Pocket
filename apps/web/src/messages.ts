@@ -294,4 +294,36 @@ export const english: Record<string, string> = {
   '已启用主机密码，请使用密码登录': 'A host password is enabled. Sign in with the password.',
   请先登录这台主机: 'Please sign in to this host first.',
   请填写设备名称并选择登录方式: 'Enter a device name and select a sign-in mode.',
+  历史查看: 'History only',
+  本机已有聊天: 'Local Codex chats',
+  刷新本机聊天: 'Refresh local chats',
+  '正在读取本机聊天…': 'Loading local chats…',
+  加载更多本机聊天: 'Load more local chats',
+  本机聊天状态: 'Local chat status',
+  '由 Pocket 继续': 'Continued in Pocket',
+  '本机聊天 · 历史查看': 'Local chat · History only',
+  刷新历史: 'Refresh history',
+  '当前任务由 Pocket 控制。结束后可释放聊天，再回桌面端继续。':
+    'Pocket controls this session. Release it after the task ends to continue in the desktop app.',
+  '显示 Codex 已保存的历史，每 5 秒刷新。桌面端的实时进度、审批和停止尚未接通。':
+    'Saved Codex history refreshes every 5 seconds. Live desktop progress, approvals and stop controls are not connected.',
+  读取于: 'Read at',
+  '释放聊天，返回历史查看': 'Release chat, return to history',
+  '正在加载历史…': 'Loading history…',
+  '此聊天暂无可显示的历史。': 'No saved history is available for this chat.',
+  '继续前，请结束原端任务并释放此聊天。不会自动接管正在运行的任务。':
+    'End the task and release this chat in the original app before continuing. Running tasks are not taken over automatically.',
+  '正在连接聊天…': 'Connecting to chat…',
+  '在 Pocket 中继续': 'Continue in Pocket',
+  '聊天被桌面端或其他进程占用，请在原端结束任务并释放聊天后重试；必要时退出原端应用':
+    'The desktop app or another process owns this chat. End its task and release it there, then retry; you may need to quit the original app.',
+  '请先选择在 Pocket 中继续此聊天': 'Choose Continue in Pocket first.',
+  历史查看不能停止其他客户端的任务: 'History view cannot stop a task in another client.',
+  请选择本机已有聊天: 'Select a local Codex chat.',
+  '聊天正在连接，请稍后': 'The chat is connecting. Please wait.',
+  此聊天不接受直接输入: 'This chat does not accept direct input.',
+  '工作目录已改变，请刷新聊天列表': 'The workspace changed. Refresh the chat list.',
+  '聊天仍在其他客户端执行，请先在原端结束任务':
+    'This chat is running in another client. End the task there first.',
+  请先停止当前任务并清空排队消息: 'Stop the current task and clear queued messages first.',
 };

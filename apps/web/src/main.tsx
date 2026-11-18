@@ -22,6 +22,7 @@ import {
   ListTodo,
   Pencil,
   Bookmark,
+  RefreshCw,
 } from 'lucide-react';
 import '@fontsource/ibm-plex-mono/latin-400.css';
 import type {
@@ -37,6 +38,7 @@ import './style.css';
 import { MessageComposer, UsagePanel, PendingPanel, OrganizePanel } from './features.tsx';
 
 const statusNames: Record<string, string> = {
+  history: '历史查看',
   idle: '就绪',
   running: '运行中',
   queued: '排队中',
@@ -121,6 +123,13 @@ function App() {
   const [entries, setEntries] = useState<Entry[]>([]),
     [hasMore, setHasMore] = useState(false),
     [loading, setLoading] = useState(false);
+  const [nativeCursor, setNativeCursor] = useState<string | null>(null);
+  const [historyReadAt, setHistoryReadAt] = useState<number | null>(null);
+  const [catalogCursor, setCatalogCursor] = useState<string | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
+  const [changingControl, setChangingControl] = useState(false);
+  const catalogBusy = useRef(false);
   const [hosts, setHosts] = useState(bootHosts),
     [panel, setPanel] = useState<
       'hosts' | 'new' | 'settings' | 'pending' | 'usage' | 'organize' | null
@@ -170,18 +179,68 @@ function App() {
     const current = { name: host.name, url: location.origin };
     if (!hosts.some((h) => h.url === current.url)) storeHosts([...hosts, current]);
   }, [host]);
-  async function loadEntries(id: string, before?: number) {
-    const gen = ++entryGeneration.current;
-    setLoading(true);
+  async function discoverLocal(next?: string) {
+    if (catalogBusy.current) return;
+    catalogBusy.current = true;
+    setCatalogLoading(true);
+    setCatalogError('');
     try {
-      const result = await api<{ entries: Entry[]; hasMore: boolean; cursor: number }>(
-        `/chats/${encodeURIComponent(id)}/entries${before ? '?before=' + before : ''}`,
+      const result = await api<{ nextCursor: string | null }>(
+        `/local-chats${next ? '?cursor=' + encodeURIComponent(next) : ''}`,
+      );
+      setCatalogCursor(result.nextCursor);
+      const snapshot = await api<Snapshot>('/snapshot');
+      if (snapshot.cursor >= cursor.current) setSnapshot(snapshot);
+    } catch (e) {
+      setCatalogError((e as Error).message);
+    } finally {
+      catalogBusy.current = false;
+      setCatalogLoading(false);
+    }
+  }
+  useEffect(() => {
+    if (paired && snapshot?.ready) void discoverLocal();
+  }, [paired, snapshot?.ready]);
+  async function changeControl(action: 'continue' | 'release') {
+    if (!chat || changingControl) return;
+    setChangingControl(true);
+    try {
+      const updated = await api<Chat>(`/chats/${encodeURIComponent(chat.id)}/${action}`, {
+        operationId: operation(),
+      });
+      setSnapshot((s) =>
+        s ? { ...s, chats: s.chats.map((c) => (c.id === updated.id ? updated : c)) } : s,
+      );
+      await loadEntries(updated.id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setChangingControl(false);
+    }
+  }
+  async function loadEntries(id: string, before?: number | string, refresh = false) {
+    const gen = ++entryGeneration.current;
+    if (!refresh) setLoading(true);
+    try {
+      const result = await api<{
+        entries: Entry[];
+        hasMore: boolean;
+        cursor: number;
+        nextCursor?: string | null;
+        readAt?: number;
+      }>(
+        `/chats/${encodeURIComponent(id)}/entries${before !== undefined ? (typeof before === 'string' ? '?nativeCursor=' + encodeURIComponent(before) : '?before=' + before) : ''}`,
       );
       if (selectedRef.current === id && entryGeneration.current === gen) {
         setEntries((old) => {
           let next = before
             ? [...result.entries, ...old.filter((e) => !result.entries.some((n) => n.id === e.id))]
-            : result.entries;
+            : refresh
+              ? [
+                  ...old.filter((e) => !result.entries.some((n) => n.id === e.id)),
+                  ...result.entries,
+                ]
+              : result.entries;
           for (const { seq, entry } of liveEntries.current.values())
             if (entry.chatId === id && seq > result.cursor) {
               const index = next.findIndex((e) => e.id === entry.id);
@@ -190,7 +249,11 @@ function App() {
             }
           return next;
         });
-        setHasMore(result.hasMore);
+        if (!refresh) {
+          setHasMore(result.hasMore);
+          setNativeCursor(result.nextCursor ?? null);
+        }
+        setHistoryReadAt(result.readAt ?? null);
       }
     } catch (e) {
       if (selectedRef.current === id && entryGeneration.current === gen)
@@ -202,6 +265,9 @@ function App() {
   useEffect(() => {
     if (!host) return;
     setEntries([]);
+    setNativeCursor(null);
+    setHasMore(false);
+    setHistoryReadAt(null);
     liveEntries.current.clear();
     follow.current = true;
     setNewOutput(false);
@@ -210,6 +276,14 @@ function App() {
     selected ? u.searchParams.set('chat', selected) : u.searchParams.delete('chat');
     history.replaceState(null, '', u);
   }, [selected, host?.id, paired]);
+  useEffect(() => {
+    if (!paired || !selected || chat?.source !== 'codex' || !snapshot?.ready) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible' && !loading)
+        void loadEntries(selected, undefined, true);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [paired, selected, chat?.source, snapshot?.ready, loading]);
   useEffect(() => {
     if (paired) api('/usage').catch(() => {});
   }, [paired]);
@@ -450,6 +524,25 @@ function App() {
             </button>
           ))}
         </div>
+        {paired && (
+          <div className="local-list-tools">
+            <span>{t('本机已有聊天')}</span>
+            <button
+              className="icon-button"
+              aria-label={t('刷新本机聊天')}
+              title={t('刷新本机聊天')}
+              disabled={catalogLoading || !snapshot?.ready}
+              onClick={() => void discoverLocal()}
+            >
+              <RefreshCw size={15} />
+            </button>
+          </div>
+        )}
+        {catalogError && (
+          <div className="local-list-error" role="status">
+            {t(catalogError)}
+          </div>
+        )}
         <nav className="chat-list" aria-label={t('聊天列表')}>
           {groups
             .filter((g) => g.chats.length)
@@ -494,8 +587,19 @@ function App() {
             <div className="list-empty">
               {search || filter !== 'all'
                 ? t('没有符合当前搜索和状态条件的聊天。')
-                : t('还没有聊天。选择工作目录，开始第一个任务。')}
+                : catalogLoading
+                  ? t('正在读取本机聊天…')
+                  : t('还没有聊天。选择工作目录，开始第一个任务。')}
             </div>
+          )}
+          {catalogCursor && (
+            <button
+              className="load-more"
+              disabled={catalogLoading}
+              onClick={() => void discoverLocal(catalogCursor)}
+            >
+              {t(catalogLoading ? '正在加载…' : '加载更多本机聊天')}
+            </button>
           )}
         </nav>
         {paired && (
@@ -736,10 +840,54 @@ function App() {
               }}
             >
               <div className="messages">
+                {chat.source === 'codex' && (
+                  <section className="local-history-note" aria-label={t('本机聊天状态')}>
+                    <div>
+                      <strong>
+                        {t(chat.control === 'pocket' ? '由 Pocket 继续' : '本机聊天 · 历史查看')}
+                      </strong>
+                      <button
+                        className="icon-button"
+                        aria-label={t('刷新历史')}
+                        title={t('刷新历史')}
+                        disabled={loading}
+                        onClick={() => void loadEntries(chat.id, undefined, true)}
+                      >
+                        <RefreshCw size={15} />
+                      </button>
+                    </div>
+                    <p>
+                      {t(
+                        chat.control === 'pocket'
+                          ? '当前任务由 Pocket 控制。结束后可释放聊天，再回桌面端继续。'
+                          : '显示 Codex 已保存的历史，每 5 秒刷新。桌面端的实时进度、审批和停止尚未接通。',
+                      )}
+                    </p>
+                    {historyReadAt && (
+                      <small>
+                        {t('读取于')} {new Date(historyReadAt).toLocaleTimeString(getLocale())}
+                      </small>
+                    )}
+                    {chat.control === 'pocket' && (
+                      <button
+                        disabled={busy(chat) || changingControl}
+                        onClick={() => void changeControl('release')}
+                      >
+                        {t('释放聊天，返回历史查看')}
+                      </button>
+                    )}
+                  </section>
+                )}
+                {loading && !entries.length && <p role="status">{t('正在加载历史…')}</p>}
                 {hasMore && (
                   <button
                     className="load-more"
-                    onClick={() => loadEntries(chat.id, entries[0]?.order)}
+                    onClick={() =>
+                      loadEntries(
+                        chat.id,
+                        chat.source === 'codex' ? (nativeCursor ?? undefined) : entries[0]?.order,
+                      )
+                    }
                     disabled={loading}
                   >
                     {loading ? t('正在加载…') : t('加载更早的记录')}
@@ -748,7 +896,9 @@ function App() {
                 {!entries.length && !loading && (
                   <div className="chat-empty">
                     <Terminal size={23} />
-                    <p>{t('工作目录已就绪。')}</p>
+                    <p>
+                      {t(chat.source === 'codex' ? '此聊天暂无可显示的历史。' : '工作目录已就绪。')}
+                    </p>
                     <span>{t('描述你希望 Codex 完成的任务。')}</span>
                   </div>
                 )}
@@ -784,20 +934,38 @@ function App() {
                 {t('查看最新输出')}
               </button>
             )}
-            {host && (
-              <MessageComposer
-                key={`${host.id}:${chat.id}`}
-                host={host}
-                chat={chat}
-                ready={!!snapshot?.ready}
-                connected={connection === '实时连接'}
-                queue={(snapshot?.queue ?? []).filter((r) => r.chatId === chat.id)}
-                onError={setError}
-                onStop={stop}
-                onSend={() => {
-                  follow.current = true;
-                }}
-              />
+            {chat.source === 'codex' && chat.control !== 'pocket' ? (
+              <section className="local-continue">
+                <p>{t('继续前，请结束原端任务并释放此聊天。不会自动接管正在运行的任务。')}</p>
+                <button
+                  className="primary"
+                  disabled={
+                    !snapshot?.ready ||
+                    connection !== '实时连接' ||
+                    changingControl ||
+                    chat.acceptsInput === false
+                  }
+                  onClick={() => void changeControl('continue')}
+                >
+                  {t(changingControl ? '正在连接聊天…' : '在 Pocket 中继续')}
+                </button>
+              </section>
+            ) : (
+              host && (
+                <MessageComposer
+                  key={`${host.id}:${chat.id}`}
+                  host={host}
+                  chat={chat}
+                  ready={!!snapshot?.ready}
+                  connected={connection === '实时连接'}
+                  queue={(snapshot?.queue ?? []).filter((r) => r.chatId === chat.id)}
+                  onError={setError}
+                  onStop={stop}
+                  onSend={() => {
+                    follow.current = true;
+                  }}
+                />
+              )
             )}
           </>
         )}
