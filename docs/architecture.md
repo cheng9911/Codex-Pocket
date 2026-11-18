@@ -8,7 +8,7 @@
 
 我们使用该包的原始协议传输层及子进程适配工具，负责 JSONL framing、请求匹配、双向请求、错误传播、进程结束和作用域清理。应用自己的适配层处理消息负载，避免上游生成 schema 对版本漂移的事件静默丢弃。没有复制完整 T3 编排器，也没有重写 JSON-RPC 传输。
 
-协议入口为官方 `codex app-server --listen stdio://`。不连接、接管或关闭官方桌面应用的 daemon；仅关闭自己启动的子进程。
+独立执行与历史读取使用官方 `codex app-server --listen stdio://`。已有桌面聊天新增 `DesktopBridge` 通道，连接桌面 Unix socket，由原桌面 owner 执行操作。两者不能互换；关闭服务仅关闭自己的子进程与 IPC 连接。
 
 ## 身份与持久化
 
@@ -24,7 +24,7 @@ HTTP 读取得到快照游标。浏览器合并实时事件时防止较旧的历
 
 每条操作带唯一 ID 和输入指纹。重复 ID 返回已有完成结果；同一个 ID 用于不同内容会被拒绝。跨进程崩溃无法保证本地回执与 Codex 外部效果的原子性，结果不确定时标记待确认，不做“恰好执行一次”的过度承诺。
 
-消息显式区分 queue、steer 和浏览器草稿。queue 持久化并按目录串行；steer 使用 `expectedTurnId` 校验当前轮次后调用 `turn/steer`，失败不转换为队列；草稿不调用主机消息接口。同一规范化目录最多一个活跃轮次，不同目录可以并行。停止清除该聊天未执行的队列，向其原生线程和轮次发出 `turn/interrupt`，收到结束通知后才显示已中断。停止轮次不承诺终止已脱离生命周期的所有后台进程。
+消息显式区分 queue、steer 和浏览器草稿。queue 持久化并按目录串行；steer 使用 `expectedTurnId` 校验当前轮次后调用 `turn/steer`，失败不转换为队列；草稿不调用主机消息接口。Pocket 自建任务按规范化目录串行，不同目录可以并行。桌面同步仅按已连接聊天状态避让，无法限制用户直接在桌面或未连接聊天中启动并行任务。停止清除该聊天未执行的队列，向其原生线程和轮次发出 `turn/interrupt`，收到结束通知后才显示已中断。停止轮次不承诺终止已脱离生命周期的所有后台进程。
 
 审批通过原生双向请求回调等待，带应用请求 ID、原生请求 ID、聊天与轮次。竞争审批在主机同步领取，只接受一次有效决定。首版支持命令、文件修改、权限请求，以及阻塞式用户问题。未识别的原生请求明确失败，不自动同意。
 
@@ -60,4 +60,15 @@ HTTP 读取得到快照游标。浏览器合并实时事件时防止较旧的历
 
 继续操作检查工作目录和原生元数据，通过 `thread/resume(excludeTurns=true)` 使用原 ID 恢复；成功后才标记 `control=pocket`。占用错误返回 409；原进程不被终止，不创建替代线程。释放时先拒绝活跃任务/排队消息，调用 `thread/unsubscribe`，再确认 `thread/loaded/list` 不再包含目标。Pocket 启动自己的 app-server 时设置 `thread_unload_delay_secs=0`，仅改变该子进程的无订阅卸载等待，不修改用户 Codex 配置文件。
 
-本机 Codex 0.167.0-alpha.3.2 的双进程实测：第二进程可以读取持久化内容，但对第一进程的运行任务调用 steer/interrupt 返回 thread not found，resume 返回 active writer。第二进程读到的历史甚至可能把原端尚未完成的轮次呈现为 interrupted，因此不能将历史状态作为实时任务状态。当前方案没有连接桌面原有进程的事件与双向请求通道；跨进程审批和控制不支持。
+本机 Codex 0.167.0-alpha.3.2 的双进程实测：第二进程可以读取持久化内容，但对第一进程的运行任务调用 steer/interrupt 返回 thread not found，resume 返回 active writer。第二进程读到的历史甚至可能把原端尚未完成的轮次呈现为 interrupted，因此不能将历史状态作为实时任务状态。这说明独立 app-server 不能控制另一进程。新增的桌面 IPC 桥接绕开了这个架构限制：请求交给原桌面 owner，不以第二个 app-server 恢复 writer。
+
+
+## 桌面 IPC 桥接
+
+`DesktopIpc` 实现当前用户 Unix socket 上的 4 字节小端长度 + JSON 帧，限制 32 MiB，匹配 requestId 并为每个请求设置超时。`DesktopBridge` 用 owner discovery 确认目标，通过 following 广播订阅版本 11 的完整快照和 revision patches；只接受选定 owner、local host、指定聊天的事件。序号缺口触发只读快照修复，未知协议禁用控制。恢复读连接不会自动重发写操作。
+
+`DesktopSessions` 将桌面状态转换为共享 Chat / Entry / PendingRequest，按 60ms 合并持久化，再复用原 HTTP/WSS。完整桌面状态（模型指令等）仅留在主机内存，不原样转发手机。请求 ID 带连接 epoch，双页面审批在 I/O 前领取；桌面已经处理的请求变为 resolved。断开时旧请求过期、队列取消，重新连接需用户操作。源聊天和桌面状态的 cwd 均经根目录检查；不会通过未知方法任意透传 HTTP 请求。
+
+消息通过 start-turn，运行中消息通过 steer-turn；沿用桌面已有权限配置。停止携带 expectedTurnId，并且只在桌面状态流确认结束后显示已结束。追加指令在发送前后核对轮次，但桌面内部 steer 实现可能在极端换轮竞态中自行重定向；这不是跨进程原子 compare-and-swap，不承诺绝对消除该竞态。结果异常标记未确认，不自动降级为新任务。
+
+该通道依据安装版本的接口行为独立实现，没有复制 Electron 打包源码，不修改桌面安装文件。验证基线为 Linux `26.1103.31037`；不是 OpenAI 支持的公共 SDK。T3 复用模块继续负责独立执行和历史读取，不负责桌面 IPC。首次完整快照较大时可能触发帧上限，当前没有大型聊天的分块同步支持。

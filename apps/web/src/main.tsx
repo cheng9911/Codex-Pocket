@@ -201,7 +201,9 @@ function App() {
   useEffect(() => {
     if (paired && snapshot?.ready) void discoverLocal();
   }, [paired, snapshot?.ready]);
-  async function changeControl(action: 'continue' | 'release') {
+  async function changeControl(
+    action: 'continue' | 'release' | 'desktop-connect' | 'desktop-disconnect',
+  ) {
     if (!chat || changingControl) return;
     setChangingControl(true);
     try {
@@ -436,7 +438,10 @@ function App() {
   async function stop() {
     if (!selected) return;
     try {
-      await api(`/chats/${selected}/stop`, { operationId: operation() });
+      await api(`/chats/${selected}/stop`, {
+        operationId: operation(),
+        expectedTurnId: chat?.turnId ?? undefined,
+      });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -844,7 +849,15 @@ function App() {
                   <section className="local-history-note" aria-label={t('本机聊天状态')}>
                     <div>
                       <strong>
-                        {t(chat.control === 'pocket' ? '由 Pocket 继续' : '本机聊天 · 历史查看')}
+                        {t(
+                          chat.control === 'desktop'
+                            ? chat.desktopConnected
+                              ? '桌面同步 · 已连接'
+                              : '桌面同步 · 已断开'
+                            : chat.control === 'pocket'
+                              ? '由 Pocket 继续'
+                              : '本机聊天 · 历史查看',
+                        )}
                       </strong>
                       <button
                         className="icon-button"
@@ -858,9 +871,11 @@ function App() {
                     </div>
                     <p>
                       {t(
-                        chat.control === 'pocket'
-                          ? '当前任务由 Pocket 控制。结束后可释放聊天，再回桌面端继续。'
-                          : '显示 Codex 已保存的历史，每 5 秒刷新。桌面端的实时进度、审批和停止尚未接通。',
+                        chat.control === 'desktop'
+                          ? '与桌面端控制同一个任务。关闭手机页面不会停止任务。'
+                          : chat.control === 'pocket'
+                            ? '当前任务由 Pocket 控制。结束后可释放聊天，再回桌面端继续。'
+                            : '当前显示已保存的历史。连接桌面后可实时查看、发消息、审批和停止。',
                       )}
                     </p>
                     {historyReadAt && (
@@ -874,6 +889,14 @@ function App() {
                         onClick={() => void changeControl('release')}
                       >
                         {t('释放聊天，返回历史查看')}
+                      </button>
+                    )}
+                    {chat.control === 'desktop' && (
+                      <button
+                        disabled={changingControl}
+                        onClick={() => void changeControl('desktop-disconnect')}
+                      >
+                        {t('断开同步，任务留在桌面继续')}
                       </button>
                     )}
                   </section>
@@ -902,9 +925,7 @@ function App() {
                     <span>{t('描述你希望 Codex 完成的任务。')}</span>
                   </div>
                 )}
-                {entries.map((entry) => (
-                  <EntryView key={entry.id} entry={entry} />
-                ))}
+                <ChatEntries entries={entries} />
                 {pending.map((request) => (
                   <RequestCard
                     key={request.id}
@@ -934,9 +955,11 @@ function App() {
                 {t('查看最新输出')}
               </button>
             )}
-            {chat.source === 'codex' && chat.control !== 'pocket' ? (
+            {chat.source === 'codex' &&
+            chat.control !== 'pocket' &&
+            !(chat.control === 'desktop' && chat.desktopConnected) ? (
               <section className="local-continue">
-                <p>{t('继续前，请结束原端任务并释放此聊天。不会自动接管正在运行的任务。')}</p>
+                <p>{t('保持 Codex 桌面端打开，可直接连接正在运行的聊天。')}</p>
                 <button
                   className="primary"
                   disabled={
@@ -945,10 +968,22 @@ function App() {
                     changingControl ||
                     chat.acceptsInput === false
                   }
-                  onClick={() => void changeControl('continue')}
+                  onClick={() => void changeControl('desktop-connect')}
                 >
-                  {t(changingControl ? '正在连接聊天…' : '在 Pocket 中继续')}
+                  {t(changingControl ? '正在连接聊天…' : '连接桌面同步')}
                 </button>
+                {chat.control !== 'desktop' && (
+                  <details>
+                    <summary>{t('其他继续方式')}</summary>
+                    <p>{t('仅当原端已释放聊天时，才使用 Pocket 独立执行。')}</p>
+                    <button
+                      disabled={!snapshot?.ready || changingControl || chat.acceptsInput === false}
+                      onClick={() => void changeControl('continue')}
+                    >
+                      {t('在 Pocket 中继续')}
+                    </button>
+                  </details>
+                )}
               </section>
             ) : (
               host && (
@@ -1068,11 +1103,52 @@ function App() {
     </div>
   );
 }
+function ChatEntries({ entries }: { entries: Entry[] }) {
+  const groups: Entry[][] = [];
+  const isActivity = (e: Entry) =>
+    ['tool', 'change', 'info'].includes(e.kind) && !['failed', 'error'].includes(e.status);
+  for (const entry of entries) {
+    if (entry.kind === 'info' && !entry.text) continue;
+    const previous = groups.at(-1);
+    if (
+      isActivity(entry) &&
+      previous &&
+      isActivity(previous[0]) &&
+      previous[0].turnId === entry.turnId
+    )
+      previous.push(entry);
+    else groups.push([entry]);
+  }
+  return groups.map((group) =>
+    isActivity(group[0]) ? (
+      <details className="activity-group" key={group[0].id}>
+        <summary>
+          <Terminal size={15} />
+          <span>{t('执行记录 · {0} 项', { 0: group.length })}</span>
+          {group.some((e) => ['running', 'inProgress', 'in_progress'].includes(e.status)) && (
+            <small>{t('执行中')}</small>
+          )}
+          <ChevronDown size={14} />
+        </summary>
+        <div className="activity-items">
+          {group.map((entry) => (
+            <EntryView key={entry.id} entry={entry} />
+          ))}
+        </div>
+      </details>
+    ) : (
+      <EntryView key={group[0].id} entry={group[0]} />
+    ),
+  );
+}
 function EntryView({ entry }: { entry: Entry }) {
   if (entry.kind === 'info' && !entry.text) return null;
   if (entry.kind === 'tool' || entry.kind === 'change' || entry.kind === 'info')
     return (
-      <details className="tool-entry">
+      <details
+        className="tool-entry"
+        open={['failed', 'error'].includes(entry.status) ? true : undefined}
+      >
         <summary>
           <Terminal size={15} />
           <span>{entry.kind === 'change' ? t('文件修改') : entry.title}</span>
@@ -1152,6 +1228,12 @@ function RequestCard({
     request.params.availableDecisions.includes('acceptForSession');
   const isFiles = request.method === 'item/fileChange/requestApproval';
   const isPermissions = request.method === 'item/permissions/requestApproval';
+  const declineDecision =
+    Array.isArray(request.params.availableDecisions) &&
+    !request.params.availableDecisions.includes('decline') &&
+    request.params.availableDecisions.includes('cancel')
+      ? 'cancel'
+      : 'decline';
   const network = request.params.networkApprovalContext;
   let changes = request.params.changes;
   if (typeof changes === 'string') {
@@ -1290,7 +1372,7 @@ function RequestCard({
                 : t('批准当前操作，后续请求仍需单独处理。')}
           </p>
           <div className="request-actions">
-            <button disabled={busy} onClick={() => submit('decline')}>
+            <button disabled={busy} onClick={() => submit(declineDecision)}>
               {t('拒绝')}
             </button>
             <button className="primary" disabled={busy} onClick={() => submit(scope)}>

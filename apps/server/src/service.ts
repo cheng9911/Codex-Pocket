@@ -18,6 +18,7 @@ import type {
 } from '../../../packages/types.ts';
 import { Store, PocketError } from './store.ts';
 import { LocalChats, nativeEntryId } from './local-chats.ts';
+import { DesktopSessions } from './desktop-sessions.ts';
 
 export interface AgentTransport {
   request<T = WireParams>(method: string, params?: unknown): Promise<T>;
@@ -44,6 +45,7 @@ export class PocketService {
   };
   private usageRefresh?: Promise<AccountUsage>;
   local: LocalChats;
+  desktop: DesktopSessions;
   private continuing = new Set<string>();
   private loaded = new Set<string>();
   private liveRequests = new Map<string, Resolver>();
@@ -56,9 +58,20 @@ export class PocketService {
     public host: HostInfo,
   ) {
     this.local = new LocalChats(store, () => this.agent());
+    this.desktop = new DesktopSessions(
+      store,
+      (path) => this.directory(path),
+      () => void this.drain(),
+    );
     for (const chat of store.chats())
       if (chat.source === 'codex')
-        store.putChat({ ...chat, control: 'history', status: 'history', turnId: null });
+        store.putChat({
+          ...chat,
+          control: 'history',
+          desktopConnected: false,
+          status: 'history',
+          turnId: null,
+        });
     this.markUncertainSends();
     for (const c of store.chats())
       if (active(c))
@@ -135,7 +148,8 @@ export class PocketService {
       chats: this.store.chats(),
       requests: this.store.requests().filter((r) => r.status === 'pending'),
       cursor: this.store.cursor(),
-      ready: this.ready,
+      ready:
+        this.ready || this.store.chats().some((c) => c.control === 'desktop' && c.desktopConnected),
       error: this.error,
       queue: this.queued(),
       favorites: this.favorites(),
@@ -325,6 +339,8 @@ export class PocketService {
   }
   async continueLocal(id: string) {
     const chat = this.store.chat(id);
+    if (chat.control === 'desktop')
+      throw new PocketError(409, '此聊天正在桌面同步，无需切换执行进程');
     if (chat.source !== 'codex') throw new PocketError(400, '请选择本机已有聊天');
     if (this.continuing.has(id)) throw new PocketError(409, '聊天正在连接，请稍后');
     if (chat.control === 'pocket' && this.loaded.has(id)) return chat;
@@ -371,6 +387,7 @@ export class PocketService {
   }
   async releaseLocal(id: string) {
     const chat = this.store.chat(id);
+    if (chat.control === 'desktop') throw new PocketError(409, '请使用断开桌面同步');
     if (chat.source !== 'codex') throw new PocketError(400, '请选择本机已有聊天');
     if (active(chat) || this.queued().some((row) => row.chatId === id) || this.continuing.has(id))
       throw new PocketError(409, '请先停止当前任务并清空排队消息');
@@ -448,10 +465,12 @@ export class PocketService {
     delivery: Delivery = 'queue',
     expectedTurnId?: string,
   ) {
-    this.agent();
-    const chat = this.store.chat(id);
+    let chat = this.store.chat(id);
+    if (chat.control === 'desktop') chat = await this.desktop.refresh(chat);
+    else this.agent();
     if (
       chat.source === 'codex' &&
+      chat.control !== 'desktop' &&
       (chat.control !== 'pocket' || !this.loaded.has(id) || this.continuing.has(id))
     )
       throw new PocketError(409, '请先选择在 Pocket 中继续此聊天');
@@ -473,11 +492,14 @@ export class PocketService {
     if (delivery === 'steer') {
       this.store.putEntry(entry);
       try {
-        const result = await this.agent().request('turn/steer', {
-          threadId: chat.nativeId ?? chat.id,
-          expectedTurnId: chat.turnId,
-          input: [{ type: 'text', text, text_elements: [] }],
-        });
+        const result =
+          chat.control === 'desktop'
+            ? await this.desktop.send(chat, text, operationId, chat.turnId!)
+            : await this.agent().request('turn/steer', {
+                threadId: chat.nativeId ?? chat.id,
+                expectedTurnId: chat.turnId,
+                input: [{ type: 'text', text, text_elements: [] }],
+              });
         if (result.turnId !== chat.turnId) throw new Error('追加指令的执行标识未确认');
         this.store.putEntry({ ...entry, status: 'steered' });
         return { steered: true };
@@ -499,7 +521,7 @@ export class PocketService {
     return { queued: true };
   }
   async drain() {
-    if (this.draining || !this.ready || this.closing) return;
+    if (this.draining || (!this.ready && !this.desktop.bridge.connected) || this.closing) return;
     this.draining = true;
     try {
       const queue = this.store.db.prepare('SELECT * FROM queue ORDER BY position').all() as any[];
@@ -509,6 +531,7 @@ export class PocketService {
         )
           continue;
         const chat = this.store.chat(row.chat_id);
+        if (chat.control !== 'desktop' && !this.ready) continue;
         if (this.store.chats().some((c) => c.cwd === chat.cwd && active(c))) continue;
         this.store.batch(() => {
           this.store.patchChat(chat.id, { status: 'running', error: null });
@@ -521,11 +544,14 @@ export class PocketService {
         });
         try {
           await this.directory(chat.cwd);
-          await this.load(chat);
-          const result = await this.agent().request('turn/start', {
-            threadId: this.store.chat(chat.id).nativeId ?? chat.id,
-            input: [{ type: 'text', text: row.text, text_elements: [] }],
-          });
+          if (chat.control !== 'desktop') await this.load(chat);
+          const result =
+            chat.control === 'desktop'
+              ? await this.desktop.send(chat, row.text, row.operation_id)
+              : await this.agent().request('turn/start', {
+                  threadId: this.store.chat(chat.id).nativeId ?? chat.id,
+                  input: [{ type: 'text', text: row.text, text_elements: [] }],
+                });
           if (typeof result.turn?.id !== 'string') throw new Error('Codex 没有返回执行标识');
           const current = this.store.chat(chat.id);
           if (active(current)) this.store.patchChat(chat.id, { turnId: result.turn.id });
@@ -543,13 +569,14 @@ export class PocketService {
       this.draining = false;
       // A message may arrive while the worker awaits provider I/O, after its
       // current queue snapshot. Wake again only when some workspace is free.
-      if (this.ready && !this.closing) {
+      if ((this.ready || this.desktop.bridge.connected) && !this.closing) {
         const queued = this.store.db.prepare('SELECT chat_id FROM queue').all() as {
           chat_id: string;
         }[];
         if (
           queued.some((row) => {
             const chat = this.store.chat(row.chat_id);
+            if (chat.control !== 'desktop' && !this.ready) return false;
             return !this.store.chats().some((c) => c.cwd === chat.cwd && active(c));
           })
         )
@@ -557,9 +584,11 @@ export class PocketService {
       }
     }
   }
-  async stop(id: string) {
+  async stop(id: string, expectedTurnId?: string) {
     const chat = this.store.chat(id);
-    if (chat.source === 'codex' && chat.control !== 'pocket')
+    if (expectedTurnId !== undefined && chat.turnId !== expectedTurnId)
+      throw new PocketError(409, '执行轮次已经改变，请确认当前任务后再停止');
+    if (chat.source === 'codex' && chat.control !== 'pocket' && chat.control !== 'desktop')
       throw new PocketError(409, '历史查看不能停止其他客户端的任务');
     const rows = this.store.db
       .prepare('SELECT operation_id FROM queue WHERE chat_id=?')
@@ -577,10 +606,12 @@ export class PocketService {
     }
     this.store.patchChat(id, { status: 'stopping' });
     try {
-      await this.agent().request('turn/interrupt', {
-        threadId: chat.nativeId ?? id,
-        turnId: chat.turnId,
-      });
+      if (chat.control === 'desktop') await this.desktop.stop(chat);
+      else
+        await this.agent().request('turn/interrupt', {
+          threadId: chat.nativeId ?? id,
+          turnId: chat.turnId,
+        });
     } catch (e) {
       this.store.patchChat(id, { error: '停止未确认：' + errorText(e) });
       throw e;
@@ -590,7 +621,7 @@ export class PocketService {
   async respond(id: string, decision?: string, answers?: Record<string, string[]>) {
     const request = this.store.requests().find((r) => r.id === id);
     const live = this.liveRequests.get(id);
-    if (!request || request.status !== 'pending' || !live)
+    if (!request || request.status !== 'pending' || (!live && !request.params._desktop))
       throw new PocketError(409, '此请求已处理或已失效');
     let response: unknown;
     if (request.kind === 'question') {
@@ -608,7 +639,7 @@ export class PocketService {
         answers: Object.fromEntries(questions.map((q: any) => [q.id, { answers: answers[q.id] }])),
       };
     } else {
-      if (!['accept', 'acceptForSession', 'decline'].includes(decision ?? ''))
+      if (!['accept', 'acceptForSession', 'decline', 'cancel'].includes(decision ?? ''))
         throw new PocketError(400, '无效的审批决定');
       const available = request.params.availableDecisions;
       if (Array.isArray(available) && !available.includes(decision))
@@ -616,15 +647,18 @@ export class PocketService {
       response =
         request.method === 'item/permissions/requestApproval'
           ? {
-              permissions: decision !== 'decline' ? request.params.permissions : {},
+              permissions: !['decline', 'cancel'].includes(decision!)
+                ? request.params.permissions
+                : {},
               scope: decision === 'acceptForSession' ? 'session' : 'turn',
             }
           : { decision };
     }
+    if (request.params._desktop) return this.desktop.respond(request, response);
     // Claim synchronously before resolving the provider callback; competing clients lose here.
     this.store.putRequest({ ...request, status: 'resolved' });
     this.liveRequests.delete(id);
-    live.resolve(response);
+    live!.resolve(response);
     this.refreshWaiting(request.chatId);
     return { resolved: true };
   }
@@ -688,9 +722,13 @@ export class PocketService {
     this.refreshWaiting(request.chatId);
     return promise;
   }
-  private expire(chatId?: string) {
+  private expire(chatId?: string, includeDesktop = true) {
     for (const r of this.store.requests())
-      if (r.status === 'pending' && (!chatId || r.chatId === chatId)) {
+      if (
+        r.status === 'pending' &&
+        (!chatId || r.chatId === chatId) &&
+        (includeDesktop || !r.params._desktop)
+      ) {
         this.liveRequests.get(r.id)?.reject(new Error('请求已失效'));
         this.liveRequests.delete(r.id);
         this.store.putRequest({ ...r, status: 'expired' });
@@ -816,9 +854,9 @@ export class PocketService {
     this.ready = false;
     this.error = error;
     this.loaded.clear();
-    this.expire();
+    this.expire(undefined, false);
     for (const c of this.store.chats())
-      if (active(c))
+      if (active(c) && c.control !== 'desktop')
         this.store.patchChat(c.id, {
           status: 'interrupted',
           turnId: null,
@@ -828,6 +866,7 @@ export class PocketService {
   }
   async close() {
     this.closing = true;
+    this.desktop.close();
     this.flushDeltas();
     this.expire();
     await this.transport?.close();

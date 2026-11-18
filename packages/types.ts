@@ -13,7 +13,8 @@ export interface Chat {
   id: string;
   nativeId?: string;
   source?: 'codex';
-  control?: 'history' | 'pocket';
+  control?: 'history' | 'pocket' | 'desktop';
+  desktopConnected?: boolean;
   historyMode?: string;
   acceptsInput?: boolean;
   customTitle?: boolean;

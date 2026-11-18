@@ -94,7 +94,7 @@ export class LocalChats {
           if (seen.has(thread.id)) continue;
           seen.add(thread.id);
           const old = known.get(thread.id);
-          if (old && (old.source !== 'codex' || old.control === 'pocket')) continue;
+          if (old && (old.source !== 'codex' || old.control === 'pocket' || old.control === 'desktop')) continue;
           const chat: Chat = {
             ...old,
             id: old?.id ?? `codex:${thread.id}`,

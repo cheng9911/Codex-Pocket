@@ -347,7 +347,7 @@ export function MessageComposer({
               ? t('追加到当前轮次，不会自动改为排队')
               : active
                 ? t('本轮成功完成后自动发送；停止或失败会取消排队')
-                : t('相同工作目录按顺序执行'))}
+                : t(chat.control === 'desktop' ? '发送到当前桌面聊天' : '相同工作目录按顺序执行'))}
       </div>
     </div>
   );

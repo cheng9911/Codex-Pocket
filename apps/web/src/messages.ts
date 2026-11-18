@@ -1,5 +1,22 @@
 // Interface copy only. Chat content and provider output are never translated.
 export const english: Record<string, string> = {
+  发送到当前桌面聊天: 'Send to this desktop chat',
+  '执行记录 · {0} 项': 'Activity · {0}',
+  '桌面同步 · 已连接': 'Desktop sync · Connected',
+  '桌面同步 · 已断开': 'Desktop sync · Disconnected',
+  '与桌面端控制同一个任务。关闭手机页面不会停止任务。':
+    'Control the same task as your desktop. Closing this page keeps the task running.',
+  '当前显示已保存的历史。连接桌面后可实时查看、发消息、审批和停止。':
+    'Viewing saved history. Connect to your desktop for live progress, messages, approvals and stop controls.',
+  '断开同步，任务留在桌面继续': 'Disconnect sync, keep desktop task running',
+  '保持 Codex 桌面端打开，可直接连接正在运行的聊天。':
+    'Keep Codex desktop open to connect to its running chat.',
+  连接桌面同步: 'Connect to desktop',
+  其他继续方式: 'Other ways to continue',
+  '仅当原端已释放聊天时，才使用 Pocket 独立执行。':
+    'Use independent Pocket execution only after the original app releases this chat.',
+  '桌面连接已断开，请重新连接聊天': 'Desktop disconnected. Reconnect this chat.',
+  请重新连接桌面聊天: 'Reconnect the desktop chat.',
   就绪: 'Ready',
   运行中: 'Running',
   排队中: 'Queued',

@@ -139,8 +139,32 @@ export function createHttp(
         ),
       );
     });
+  for (const action of ['desktop-connect', 'desktop-disconnect'] as const)
+    app.post(`/api/chats/:id/${action}`, async (req, res) => {
+      const id = req.params.id;
+      res.json(
+        await service.operation(String(req.body.operationId), { type: action, id }, async () =>
+          action === 'desktop-connect' ? service.desktop.attach(id) : service.desktop.detach(id),
+        ),
+      );
+    });
   app.get('/api/chats/:id/entries', async (req, res) => {
     const chat = service.store.chat(req.params.id);
+    if (chat.control === 'desktop') {
+      const before = Number(req.query.nativeCursor);
+      const entries = service.store.entries(
+        chat.id,
+        Number.isSafeInteger(before) && before > 0 ? before : undefined,
+      );
+      res.json({
+        entries,
+        hasMore: entries.length === 60,
+        nextCursor: entries.length === 60 ? String(entries[0].order) : null,
+        cursor: service.store.cursor(),
+        readAt: Date.now(),
+      });
+      return;
+    }
     if (chat.source === 'codex') {
       const cursor =
         typeof req.query.nativeCursor === 'string' ? req.query.nativeCursor : undefined;
@@ -188,9 +212,14 @@ export function createHttp(
   });
   app.post('/api/chats/:id/stop', async (req, res) => {
     const id = req.params.id;
+    const expectedTurnId = req.body.expectedTurnId;
+    if (expectedTurnId !== undefined && typeof expectedTurnId !== 'string')
+      throw new PocketError(400, '无效的执行轮次');
     res.json(
-      await service.operation(String(req.body.operationId), { type: 'stop', id }, () =>
-        service.stop(id),
+      await service.operation(
+        String(req.body.operationId),
+        { type: 'stop', id, expectedTurnId },
+        () => service.stop(id, expectedTurnId),
       ),
     );
   });

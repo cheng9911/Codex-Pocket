@@ -463,6 +463,36 @@ h1 {
   border-radius: 8px;
   background: #151515;
 }
+.activity-group {
+  margin: 0 0 12px;
+  color: var(--muted, #aaa);
+}
+.activity-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 0;
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+}
+.activity-group > summary::-webkit-details-marker {
+  display: none;
+}
+.activity-group > summary > span {
+  flex: 1;
+}
+.activity-group > summary > small {
+  font-size: 12px;
+}
+.activity-group[open] > summary > svg:last-child {
+  transform: rotate(180deg);
+}
+.activity-items {
+  padding-left: 12px;
+  border-left: 1px solid #333;
+}
 .tool-entry summary {
   display: flex;
   gap: 10px;
