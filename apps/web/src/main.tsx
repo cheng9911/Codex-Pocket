@@ -33,7 +33,7 @@ import type {
   Snapshot,
   HostInfo,
 } from '../../../packages/types.ts';
-import { api, operation } from './api.ts';
+import { api, ApiError, operation } from './api.ts';
 import { subscribeToEvents } from './event-stream.ts';
 import './style.css';
 import { MessageComposer, UsagePanel, PendingPanel, OrganizePanel } from './features.tsx';
@@ -90,6 +90,7 @@ function initialHosts(): SavedHost[] {
   return hosts;
 }
 const bootHosts = initialHosts();
+const connectionTimeout = 14_000;
 function Mark() {
   return (
     <svg className="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -117,6 +118,11 @@ function App() {
     [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [paired, setPaired] = useState<boolean | null>(null),
     [connection, setConnection] = useState('连接中');
+  const [httpSync, setHttpSync] = useState(false);
+  const [hostProbeFailed, setHostProbeFailed] = useState(false);
+  const [hostProbe, setHostProbe] = useState(0);
+  const realtime = connection === '实时连接';
+  const connected = realtime || httpSync;
   const [error, setError] = useState(''),
     [selected, setSelected] = useState<string | null>(() =>
       new URLSearchParams(location.search).get('chat'),
@@ -158,21 +164,31 @@ function App() {
     setHosts(next);
     save('pocket:hosts', next);
   }
-  useEffect(() => {
-    api<HostInfo>('/host')
-      .then(setHost)
-      .catch((e) => setError(e.message));
-    api<Snapshot>('/snapshot')
-      .then((s) => {
-        setSnapshot(s);
-        setPaired(true);
-        cursor.current = s.cursor;
-      })
-      .catch((e) => {
-        setPaired(false);
-        if (e.status !== 401) setError(e.message);
-      });
-  }, []);
+  function acceptSnapshot(data: Snapshot) {
+    if (data.cursor < cursor.current) return;
+    cursor.current = data.cursor;
+    setSnapshot(data);
+  }
+  async function checkHost() {
+    setHostProbeFailed(false);
+    setError('');
+    const [session, info] = await Promise.allSettled([
+      api<Snapshot>('/snapshot', undefined, connectionTimeout),
+      api<HostInfo>('/host', undefined, connectionTimeout),
+    ]);
+    if (info.status === 'fulfilled') setHost(info.value);
+    if (session.status === 'fulfilled') {
+      if (info.status === 'rejected') setHost(session.value.host);
+      acceptSnapshot(session.value);
+      setPaired(true);
+    } else if (session.reason?.status === 401 && info.status === 'fulfilled') {
+      setPaired(false);
+    } else {
+      setError((info.status === 'rejected' ? info.reason : session.reason).message);
+      setHostProbeFailed(true);
+    }
+  }
+  useEffect(() => { void checkHost(); }, [hostProbe]);
   useEffect(() => {
     if (!host) return;
     const current = { name: host.name, url: location.origin };
@@ -231,6 +247,8 @@ function App() {
         readAt?: number;
       }>(
         `/chats/${encodeURIComponent(id)}/entries${before !== undefined ? (typeof before === 'string' ? '?nativeCursor=' + encodeURIComponent(before) : '?before=' + before) : ''}`,
+        undefined,
+        connectionTimeout,
       );
       if (selectedRef.current === id && entryGeneration.current === gen) {
         setEntries((old) => {
@@ -253,9 +271,10 @@ function App() {
           setNativeCursor(result.nextCursor ?? null);
         }
         setHistoryReadAt(result.readAt ?? null);
+        return true;
       }
     } catch (e) {
-      if (selectedRef.current === id && entryGeneration.current === gen)
+      if (!refresh && selectedRef.current === id && entryGeneration.current === gen)
         setError((e as Error).message);
     } finally {
       if (entryGeneration.current === gen) setLoading(false);
@@ -277,7 +296,7 @@ function App() {
   }, [selected, host?.id, paired]);
   const readingLocalHistory = chat?.source === 'codex' && (chat.control ?? 'history') === 'history';
   useEffect(() => {
-    if (!paired || !selected || !readingLocalHistory || !snapshot?.ready || loading) return;
+    if (!paired || !realtime || !selected || !readingLocalHistory || !snapshot?.ready || loading) return;
     let stopped = false;
     const refresh = async () => {
       if (document.visibilityState === 'visible') await loadEntries(selected, undefined, true);
@@ -288,7 +307,7 @@ function App() {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [paired, selected, readingLocalHistory, snapshot?.ready, loading]);
+  }, [paired, realtime, selected, readingLocalHistory, snapshot?.ready, loading]);
   useEffect(() => {
     if (paired) api('/usage').catch(() => {});
   }, [paired]);
@@ -297,12 +316,7 @@ function App() {
     return subscribeToEvents({
       cursor: () => cursor.current,
       onState: setConnection,
-      onExpired() {
-        setPaired(false);
-        setSnapshot(null);
-        setError('设备授权已撤销或过期，请重新登录');
-        void api<HostInfo>('/host').then(setHost).catch(() => {});
-      },
+      onExpired: expireSession,
       onMessage(data) {
         if (data.type === 'snapshot') {
           setSnapshot(data.data);
@@ -350,6 +364,53 @@ function App() {
       },
     });
   }, [paired]);
+  function expireSession() {
+    setPaired(false);
+    setSnapshot(null);
+    setHttpSync(false);
+    setError('设备授权已撤销或过期，请重新登录');
+    void api<HostInfo>('/host', undefined, connectionTimeout).then(setHost).catch(() => {});
+  }
+  useEffect(() => {
+    if (!paired || realtime) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let lastChat: string | null = null;
+    let lastEntriesCursor = -1;
+    async function sync() {
+      if (navigator.onLine && document.visibilityState === 'visible') {
+        try {
+          const data = await api<Snapshot>('/snapshot', undefined, connectionTimeout);
+          if (disposed) return;
+          acceptSnapshot(data);
+          setHttpSync(true);
+          const id = selectedRef.current;
+          if (id && data.chats.some((chat) => chat.id === id) &&
+              (id !== lastChat || data.cursor > lastEntriesCursor) &&
+              await loadEntries(id, undefined, true)) {
+            lastChat = id;
+            lastEntriesCursor = data.cursor;
+          }
+        } catch (error) {
+          if (disposed) return;
+          setHttpSync(false);
+          if (error instanceof ApiError && error.status === 401) {
+            expireSession();
+            return;
+          }
+        }
+      } else if (!navigator.onLine) {
+        setHttpSync(false);
+      }
+      if (!disposed) timer = setTimeout(sync, 5_000);
+    }
+    timer = setTimeout(sync, 800);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+      setHttpSync(false);
+    };
+  }, [paired, realtime]);
   useEffect(() => {
     if (follow.current && scroller.current)
       scroller.current.scrollTop = scroller.current.scrollHeight;
@@ -377,12 +438,22 @@ function App() {
     setSending(true);
     setError('');
     try {
-      if (passwordMode) await api('/login', { password, label, remember });
-      else await api('/pair', { code: code.trim(), label });
+      if (passwordMode) await api('/login', { password, label, remember }, connectionTimeout);
+      else await api('/pair', { code: code.trim(), label }, connectionTimeout);
       setCode('');
-      setSnapshot(await api('/snapshot'));
       setPaired(true);
     } catch (e) {
+      if (e instanceof ApiError && (e.status === 0 || e.status >= 500)) {
+        try {
+          const data = await api<Snapshot>('/snapshot', undefined, connectionTimeout);
+          acceptSnapshot(data);
+          setCode('');
+          setPaired(true);
+          return;
+        } catch {
+          // A lost login reply never causes an automatic second password submission.
+        }
+      }
       setError((e as Error).message);
     } finally {
       setPassword('');
@@ -425,7 +496,7 @@ function App() {
   const decisions = snapshot?.requests.length ?? 0;
   const waiting = (snapshot?.requests.length ?? 0) + (snapshot?.queue?.length ?? 0);
   const connectionText =
-    paired === false ? t(passwordMode ? '等待登录' : '等待配对') : t(connection);
+    paired === false ? t(passwordMode ? '等待登录' : '等待配对') : t(httpSync ? '定时同步' : connection);
   return (
     <div className={'app ' + (selected ? 'has-selection' : '')}>
       <aside className="sidebar">
@@ -542,7 +613,7 @@ function App() {
                 ))}
               </section>
             ))}
-          {paired && !filtered.length && (
+          {paired && snapshot && !filtered.length && (
             <div className="list-empty">
               {search || filter !== 'all'
                 ? t('没有符合当前搜索和状态条件的聊天。')
@@ -572,7 +643,7 @@ function App() {
         )}
         <div className="sidebar-bottom">
           <span
-            className={'connection-dot ' + (paired && connection === '实时连接' ? 'online' : '')}
+            className={'connection-dot ' + (paired && connected ? 'online' : '')}
           />
           <span>{connectionText}</span>
           <button
@@ -657,10 +728,11 @@ function App() {
             </button>
           </div>
         )}
-        {paired && connection !== '实时连接' && (
+        {paired && !realtime && (
           <div className="reconnect-banner" role="status">
-            {t(connection)}
-            {t('· 正在恢复显示，主机任务可能仍在继续。')}
+            {httpSync ? t('正在通过 HTTPS 定时更新聊天。') : (
+              <>{t(connection)}{t('· 正在恢复显示，主机任务可能仍在继续。')}</>
+            )}
           </div>
         )}
         {paired === false ? (
@@ -739,7 +811,15 @@ function App() {
             </form>
           </section>
         ) : paired === null ? (
-          <div className="center-note">{t('正在连接主机…')}</div>
+          <div className="center-note">
+            {hostProbeFailed ? (
+              <button type="button" className="primary" onClick={() => setHostProbe((n) => n + 1)}>
+                {t('重试连接')}
+              </button>
+            ) : t('正在连接主机…')}
+          </div>
+        ) : !snapshot ? (
+          <div className="center-note" role="status">{t('正在加载聊天…')}</div>
         ) : !chat ? (
           <section className="welcome">
             <h2>{t('主机工作区')}</h2>
@@ -918,7 +998,7 @@ function App() {
                   className="primary"
                   disabled={
                     !snapshot?.ready ||
-                    connection !== '实时连接' ||
+                    !connected ||
                     changingControl ||
                     chat.acceptsInput === false
                   }
@@ -946,7 +1026,7 @@ function App() {
                   host={host}
                   chat={chat}
                   ready={!!snapshot?.ready}
-                  connected={connection === '实时连接'}
+                  connected={connected}
                   models={snapshot?.models}
                   queue={(snapshot?.queue ?? []).filter((r) => r.chatId === chat.id)}
                   onError={setError}

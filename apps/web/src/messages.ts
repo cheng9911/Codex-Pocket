@@ -32,6 +32,13 @@ export const english: Record<string, string> = {
   连接中: 'Connecting',
   我的浏览器: 'My browser',
   实时连接: 'Connected',
+  定时同步: 'Polling',
+  '正在通过 HTTPS 定时更新聊天。': 'Updating chats periodically over HTTPS.',
+  重试连接: 'Retry connection',
+  '正在加载聊天…': 'Loading chats…',
+  '暂时连不上主机，请检查网络后重试。': 'Could not reach the host. Check your network and try again.',
+  '等待主机响应超时，请稍后重试。': 'The host took too long to respond. Try again shortly.',
+  '主机返回了无法读取的响应，请重试。': 'The host returned an unreadable response. Try again.',
   '设备会话已撤销或过期，请重新配对':
     'This device session was revoked or expired. Please pair again.',
   连接已断开: 'Disconnected',
