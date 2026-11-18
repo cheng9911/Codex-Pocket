@@ -370,7 +370,6 @@ function App() {
         <div className="brand">
           <Mark />
           <span>Codex Pocket</span>
-          <span className="version">0.1</span>
         </div>
         <button className="host-switch" onClick={() => setPanel('hosts')}>
           <Server size={17} />
@@ -399,7 +398,7 @@ function App() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <label className="status-filter">
+        <div className="status-filter">
           <span className="sr-only">状态筛选</span>
           <select aria-label="状态筛选" value={filter} onChange={(e) => setFilter(e.target.value)}>
             <option value="all">全部聊天</option>
@@ -411,10 +410,10 @@ function App() {
             <ListTodo size={15} />
             待处理{waiting > 0 ? ` ${waiting}` : ''}
           </button>
-        </label>
+        </div>
         <div className="list-caption">
-          <span>此主机的聊天</span>
-          {waiting > 0 && <span className="attention">{waiting} 项待处理</span>}
+          <span>聊天列表</span>
+          <span>{filtered.length}</span>
         </div>
         <nav className="chat-list" aria-label="聊天列表">
           {filtered.map((c) => (
@@ -493,7 +492,7 @@ function App() {
                   <span title={chat.cwd}>{chat.cwd}</span>
                 </>
               ) : (
-                <span>你的主机，随时继续。</span>
+                <span>{paired ? '主机工作区' : '设备配对'}</span>
               )}
             </div>
           </div>
@@ -537,11 +536,16 @@ function App() {
         )}
         {paired === false ? (
           <section className="pair-screen">
-            <div className="pair-icon">
-              <ShieldCheck size={30} />
+            <div className="pair-guide">
+              <Mark />
+              <h2>连接到你的主机</h2>
+              <p>在主机的项目目录运行以下命令，获取一次性配对码。</p>
+              <div className="pair-command">
+                <Terminal size={18} />
+                <code>npm run pair</code>
+              </div>
+              <small>配对码在 10 分钟内有效，只能使用一次。</small>
             </div>
-            <h2>连接到你的主机</h2>
-            <p>配对此浏览器，以查看聊天、发送消息和处理审批。</p>
             <form onSubmit={pair}>
               <label>
                 一次性配对码
@@ -568,36 +572,53 @@ function App() {
                 <ArrowUp size={16} />
               </button>
             </form>
-            <p className="pair-help">
-              在主机的项目目录运行 <code>npm run pair</code>
-              <br />
-              配对码只能使用一次，10 分钟后过期。
-            </p>
           </section>
         ) : paired === null ? (
           <div className="center-note">正在连接主机…</div>
         ) : !chat ? (
           <section className="welcome">
-            <Mark />
-            <h2>
-              把任务留给主机。
-              <br />
-              把决定带在身边。
-            </h2>
-            <p>
-              {snapshot?.ready
-                ? '选择一个聊天继续，或开始新的 Codex 任务。'
-                : 'Codex 暂未就绪。请在主机检查登录与服务日志。'}
-            </p>
+            <h2>主机工作区</h2>
+            <p>{snapshot?.ready ? host?.name : 'Codex 暂未就绪，请在主机检查登录与服务日志。'}</p>
+            <div className="workspace-counts">
+              <div>
+                <strong>{snapshot?.chats.length ?? 0}</strong>
+                <span>全部聊天</span>
+              </div>
+              <div>
+                <strong>{snapshot?.chats.filter((c) => c.status === 'running').length ?? 0}</strong>
+                <span>运行中</span>
+              </div>
+              <button onClick={() => setPanel('pending')}>
+                <strong>{waiting}</strong>
+                <span>
+                  待处理 <ChevronRight size={13} />
+                </span>
+              </button>
+            </div>
             {snapshot?.error && <pre>{snapshot.error}</pre>}
             <button className="primary" onClick={() => setPanel('new')} disabled={!snapshot?.ready}>
               <Plus size={17} />
               新建聊天
             </button>
-            <div className="welcome-foot">
-              <Terminal size={15} />
-              <span>任务在 {host?.name ?? '主机'} 上执行</span>
-            </div>
+            {!!snapshot?.chats.length && (
+              <div className="recent-chats">
+                <h3>最近活动</h3>
+                {snapshot.chats
+                  .slice()
+                  .sort((a, b) => b.updatedAt - a.updatedAt)
+                  .slice(0, 3)
+                  .map((c) => (
+                    <button key={c.id} onClick={() => setSelected(c.id)}>
+                      <span>
+                        {c.title}
+                        <small>{c.cwd}</small>
+                      </span>
+                      <Badge chat={c} />
+                      <ChevronRight size={15} />
+                    </button>
+                  ))}
+              </div>
+            )}
           </section>
         ) : (
           <>
@@ -891,7 +912,9 @@ function RequestCard({
         <strong>
           {host.name} · {host.id.slice(0, 8)}
         </strong>
-        <span>{request.params.cwd ?? chat.cwd}</span>
+        <span>
+          <Folder size={13} /> {request.params.cwd ?? chat.cwd}
+        </span>
       </div>
       <p>
         <strong>
