@@ -362,6 +362,14 @@ function App() {
           (filter === 'ended' && ['completed', 'failed', 'interrupted'].includes(c.status))),
     )
     .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt);
+  const needsDecision = (c: Chat) =>
+    c.status === 'waiting_approval' || c.status === 'waiting_input';
+  const groups = [
+    { name: '已置顶', chats: filtered.filter((c) => c.pinned) },
+    { name: '等我处理', chats: filtered.filter((c) => !c.pinned && needsDecision(c)) },
+    { name: '最近聊天', chats: filtered.filter((c) => !c.pinned && !needsDecision(c)) },
+  ];
+  const decisions = snapshot?.requests.length ?? 0;
   const waiting = (snapshot?.requests.length ?? 0) + (snapshot?.queue?.length ?? 0);
   const connectionText = paired === false ? '等待配对' : connection;
   return (
@@ -370,6 +378,15 @@ function App() {
         <div className="brand">
           <Mark />
           <span>Codex Pocket</span>
+          <button
+            className="compose-shortcut"
+            aria-label="新建聊天"
+            title="新建聊天"
+            disabled={!paired || !snapshot?.ready}
+            onClick={() => setPanel('new')}
+          >
+            <Plus size={18} />
+          </button>
         </div>
         <button className="host-switch" onClick={() => setPanel('hosts')}>
           <Server size={17} />
@@ -382,12 +399,14 @@ function App() {
           <ChevronDown size={15} />
         </button>
         <button
-          className="new-chat"
-          onClick={() => setPanel('new')}
-          disabled={!paired || !snapshot?.ready}
+          className={'task-inbox' + (decisions ? ' needs-attention' : '')}
+          onClick={() => setPanel('pending')}
+          disabled={!paired}
         >
-          <Plus size={17} />
-          新建聊天
+          <ListTodo size={18} />
+          <span>待处理列表</span>
+          <b>{waiting}</b>
+          <ChevronRight size={15} />
         </button>
         <div className="search">
           <Search size={15} />
@@ -398,40 +417,58 @@ function App() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="status-filter">
-          <span className="sr-only">状态筛选</span>
-          <select aria-label="状态筛选" value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option value="all">全部聊天</option>
-            <option value="running">运行中</option>
-            <option value="waiting">等我处理</option>
-            <option value="ended">已结束</option>
-          </select>
-          <button type="button" onClick={() => setPanel('pending')} disabled={!paired}>
-            <ListTodo size={15} />
-            待处理{waiting > 0 ? ` ${waiting}` : ''}
-          </button>
-        </div>
-        <div className="list-caption">
-          <span>聊天列表</span>
-          <span>{filtered.length}</span>
-        </div>
-        <nav className="chat-list" aria-label="聊天列表">
-          {filtered.map((c) => (
-            <button
-              className={'chat-row ' + (selected === c.id ? 'selected' : '')}
-              key={c.id}
-              onClick={() => setSelected(c.id)}
-            >
-              <div className="row-title">
-                {c.pinned && <Pin size={12} aria-label="已置顶" />}
-                {c.title}
-              </div>
-              <div className="row-meta">
-                <span>{c.cwd.split('/').pop()}</span>
-                <Badge chat={c} />
-              </div>
+        <div className="inbox-filters" role="group" aria-label="状态筛选">
+          {Object.entries({
+            all: '全部',
+            running: '运行中',
+            waiting: '等我处理',
+            ended: '已结束',
+          }).map(([key, label]) => (
+            <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>
+              {label}
             </button>
           ))}
+        </div>
+        <nav className="chat-list" aria-label="聊天列表">
+          {groups
+            .filter((g) => g.chats.length)
+            .map((g) => (
+              <section className="inbox-group" key={g.name}>
+                <h2>
+                  {g.name}
+                  <span>{g.chats.length}</span>
+                </h2>
+                {g.chats.map((c) => (
+                  <button
+                    className={'chat-row ' + (selected === c.id ? 'selected' : '')}
+                    key={c.id}
+                    onClick={() => setSelected(c.id)}
+                  >
+                    <div className="chat-row-heading">
+                      <div className="row-title">
+                        {c.pinned && <Pin size={12} aria-label="已置顶" />}
+                        {c.title}
+                      </div>
+                      <time dateTime={new Date(c.updatedAt).toISOString()}>
+                        {new Date(c.updatedAt).toDateString() === new Date().toDateString()
+                          ? new Date(c.updatedAt).toLocaleTimeString('zh-CN', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : new Date(c.updatedAt).toLocaleDateString('zh-CN', {
+                              month: 'numeric',
+                              day: 'numeric',
+                            })}
+                      </time>
+                    </div>
+                    <div className="row-meta">
+                      <span>{c.cwd.split('/').pop()}</span>
+                      <Badge chat={c} />
+                    </div>
+                  </button>
+                ))}
+              </section>
+            ))}
           {paired && !filtered.length && (
             <div className="list-empty">
               {search || filter !== 'all'
@@ -886,6 +923,16 @@ function RequestCard({
     : [];
   const command =
     typeof request.params.command === 'string' ? request.params.command : '未提供命令预览';
+  const actionTitle =
+    request.kind === 'question'
+      ? '回答 Codex 的问题'
+      : network
+        ? '审批网络访问'
+        : isFiles
+          ? '审批文件修改'
+          : isPermissions
+            ? '审批额外权限'
+            : '审批命令执行';
   const submit = async (decision?: string) => {
     setBusy(true);
     try {
@@ -906,7 +953,7 @@ function RequestCard({
     <section className="request-card">
       <div className="request-heading">
         <ShieldCheck size={18} />
-        <strong>{request.kind === 'question' ? '需要你的回答' : '等待你审批'}</strong>
+        <strong>{actionTitle}</strong>
       </div>
       <div className="request-context">
         <strong>
@@ -916,21 +963,7 @@ function RequestCard({
           <Folder size={13} /> {request.params.cwd ?? chat.cwd}
         </span>
       </div>
-      <p>
-        <strong>
-          {request.kind === 'question'
-            ? '等待回答'
-            : network
-              ? '请求网络访问'
-              : isFiles
-                ? '准备修改文件'
-                : isPermissions
-                  ? '请求额外权限'
-                  : '准备执行命令'}
-        </strong>
-      </p>
-      <p>
-        原因：
+      <p className="request-reason">
         {request.params.reason ||
           (request.kind === 'question' ? request.prompt : 'Codex 未提供具体原因，请检查操作内容。')}
       </p>
@@ -945,7 +978,7 @@ function RequestCard({
             !isFiles &&
             !isPermissions && (
               <div>
-                <pre className="command-preview">
+                <pre className="command-preview" aria-label="准备执行的命令">
                   {command.slice(0, 500)}
                   {command.length > 500 ? '…' : ''}
                 </pre>

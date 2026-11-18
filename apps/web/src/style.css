@@ -165,7 +165,10 @@ small {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin: 17px 7px 20px;
+  margin: 5px 0 6px;
+  padding: 0 9px;
+  border: 1px solid #303030;
+  border-radius: 8px;
   color: var(--muted);
 }
 .search input {
@@ -1888,5 +1891,207 @@ h1 {
   .composer-wrap {
     max-height: 48dvh;
     overflow-y: auto;
+  }
+}
+
+/* A host inbox and a single action row keep the transcript in view on a phone. */
+.brand {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+.compose-shortcut {
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  width: 44px;
+  min-height: 44px;
+  border: 1px solid #363636;
+  border-radius: 10px;
+  color: #e4e4e1;
+}
+.host-switch {
+  margin: 16px 0 4px;
+}
+.task-inbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 8px;
+  padding: 0 12px;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  border-radius: 8px;
+}
+.task-inbox b {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.task-inbox.needs-attention {
+  background: #252119;
+  color: var(--warning);
+}
+.inbox-filters {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+}
+.inbox-filters button {
+  flex: 1;
+  min-width: 0;
+  padding: 0 2px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+.inbox-filters button[aria-pressed='true'] {
+  border-bottom-color: #e9e7df;
+  color: #fafafa;
+  font-weight: 600;
+}
+.inbox-group h2 {
+  margin: 19px 10px 5px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: #bcbcb8;
+  font-weight: 500;
+}
+.inbox-group h2 span {
+  font-variant-numeric: tabular-nums;
+  color: var(--faint);
+  font-weight: 400;
+}
+.chat-row-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.chat-row-heading .row-title {
+  flex: 1;
+}
+.chat-row-heading time {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.chat-row {
+  min-height: 65px;
+  margin-bottom: 1px;
+}
+.chat-row .row-meta > span:first-child {
+  flex: 1;
+  max-width: none;
+}
+.request-card {
+  background: #191919;
+  border: 1px solid #363532;
+  padding: 18px;
+}
+.request-heading {
+  color: #f3f1eb;
+  font-size: 17px;
+  letter-spacing: -0.25px;
+}
+.request-heading svg {
+  color: var(--warning);
+}
+.request-context {
+  margin: 12px 0;
+  gap: 3px;
+}
+.request-context strong {
+  color: #c6c4be;
+}
+.request-card .command-preview {
+  border-color: #383735;
+  background: #111110;
+  color: #f3e5c9;
+  padding: 14px;
+}
+.request-card .scope-note {
+  margin: 8px 0;
+}
+.composer .composer-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+  gap: 5px;
+  padding-top: 5px;
+}
+.composer-toolbar .delivery-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 2px;
+}
+.delivery-row label {
+  min-width: 0;
+}
+.delivery-row select {
+  text-overflow: ellipsis;
+}
+.composer-toolbar .voice-button {
+  width: 44px;
+  min-height: 44px;
+  justify-content: center;
+}
+.composer-toolbar .speech-input {
+  display: block;
+}
+.composer-toolbar:has(.voice-status) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.composer-toolbar:has(.voice-status) .speech-input {
+  grid-row: 2;
+  grid-column: 1/-1;
+  display: flex;
+  flex-wrap: nowrap;
+}
+.composer-toolbar .voice-status {
+  flex: 1;
+  padding: 0;
+}
+@media (max-width: 760px) {
+  .sidebar {
+    padding-top: max(14px, env(safe-area-inset-top));
+  }
+  .brand {
+    padding: 0 2px;
+  }
+  .host-switch {
+    margin-top: 12px;
+    min-height: 56px;
+  }
+  .inbox-filters button {
+    min-height: 48px;
+  }
+  .chat-row {
+    padding: 12px 10px;
+  }
+  .composer .composer-toolbar {
+    gap: 2px;
+  }
+  .composer-toolbar .delivery-row {
+    padding: 0;
+  }
+  .composer-toolbar .stop-button {
+    padding: 0 5px;
+  }
+  .composer-toolbar .send-intent {
+    padding-inline: 9px;
+  }
+  .request-card .approval-scope {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .request-card .approval-scope select {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
   }
 }

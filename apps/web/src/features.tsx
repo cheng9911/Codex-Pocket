@@ -107,12 +107,13 @@ function SpeechInput({ onText, disabled }: { onText: (text: string) => void; dis
       <button
         type="button"
         className={'voice-button ' + (listening ? 'listening' : '')}
+        title={listening ? '结束识别' : '语音输入'}
         onClick={toggle}
         disabled={disabled}
         aria-pressed={listening}
       >
         {listening ? <Square size={14} /> : <Mic size={15} />}
-        {listening ? '结束识别' : '语音输入'}
+        <span className="sr-only">{listening ? '结束识别' : '语音输入'}</span>
       </button>
       {(listening || message) && (
         <span className="voice-status" role="status">
@@ -249,36 +250,6 @@ export function MessageComposer({
             }
           }}
         />
-        <div className="delivery-row">
-          <label>
-            <span className="sr-only">消息发送方式</span>
-            <select
-              aria-label="消息发送方式"
-              value={intent}
-              onChange={(e) => setIntent(e.target.value as Delivery | 'draft')}
-              disabled={sending}
-            >
-              <option value="queue">{active ? '完成后发送' : '发送新任务'}</option>
-              <option value="steer" disabled={!canSteer}>
-                现在补充 · 当前任务
-              </option>
-              <option value="draft">仅保存草稿</option>
-            </select>
-          </label>
-          {['running', 'queued', 'waiting_approval', 'waiting_input', 'stopping'].includes(
-            chat.status,
-          ) && (
-            <button
-              type="button"
-              className="stop-button"
-              onClick={onStop}
-              disabled={chat.status === 'stopping'}
-            >
-              <Square size={12} />
-              {chat.status === 'stopping' ? '正在停止' : '停止'}
-            </button>
-          )}
-        </div>
         {draft.text && (draft.unsent || draft.uncertain) && (
           <div className="unsent-notice" role="status">
             {draft.uncertain
@@ -299,6 +270,37 @@ export function MessageComposer({
           </div>
         )}
         <div className="composer-toolbar">
+          <div className="delivery-row">
+            <label>
+              <span className="sr-only">消息发送方式</span>
+              <select
+                aria-label="消息发送方式"
+                value={intent}
+                onChange={(e) => setIntent(e.target.value as Delivery | 'draft')}
+                disabled={sending}
+              >
+                <option value="queue">{active ? '完成后发送' : '发送新任务'}</option>
+                <option value="steer" disabled={!canSteer}>
+                  现在补充 · 当前任务
+                </option>
+                <option value="draft">仅保存草稿</option>
+              </select>
+            </label>
+            {['running', 'queued', 'waiting_approval', 'waiting_input', 'stopping'].includes(
+              chat.status,
+            ) && (
+              <button
+                type="button"
+                className="stop-button"
+                onClick={onStop}
+                disabled={chat.status === 'stopping'}
+              >
+                <Square size={12} />
+                {chat.status === 'stopping' ? '正在停止' : '停止'}
+              </button>
+            )}
+          </div>
+
           <SpeechInput
             disabled={sending}
             onText={(text) =>
