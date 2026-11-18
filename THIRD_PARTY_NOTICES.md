@@ -16,7 +16,9 @@ The Pocket transport facade and application code are separate from the unchanged
 
 ## Fonts
 
-Inter and IBM Plex Mono are distributed through their Fontsource packages. Their SIL Open Font License notices are retained in `third-party-licenses/`. Fonts are self-hosted by the web build.
+Alibaba PuHuiTi 3.0 (Regular, Medium and SemiBold) is downloaded unchanged from the CDN linked by https://www.alibabafonts.com. Copyright belongs to Alibaba (China) Co., Ltd. Its legal notice is retained in `third-party-licenses/AlibabaPuHuiTi-3.0.txt` and shipped at `/licenses/AlibabaPuHuiTi-3.0.txt`. Original URLs, SHA-256 hashes and notice provenance are recorded in `apps/web/src/assets/fonts/SOURCES.json`. This project has no affiliation with or endorsement by Alibaba.
+
+IBM Plex Mono is distributed through Fontsource under the SIL Open Font License, retained in `third-party-licenses/`. All fonts are self-hosted by the web build.
 
 ## Other dependencies
 

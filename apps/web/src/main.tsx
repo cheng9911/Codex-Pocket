@@ -1,3 +1,4 @@
+import { t, useLocale, getLocale, setLocale, type Locale } from './i18n.ts';
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
@@ -22,9 +23,6 @@ import {
   Pencil,
   Bookmark,
 } from 'lucide-react';
-import '@fontsource/inter/latin-400.css';
-import '@fontsource/inter/latin-500.css';
-import '@fontsource/inter/latin-600.css';
 import '@fontsource/ibm-plex-mono/latin-400.css';
 import type {
   Chat,
@@ -106,11 +104,12 @@ function Badge({ chat }: { chat: Chat }) {
   return (
     <span className={'status ' + chat.status}>
       <i />
-      {statusNames[chat.status]}
+      {t(statusNames[chat.status])}
     </span>
   );
 }
 function App() {
+  useLocale();
   const [host, setHost] = useState<HostInfo | null>(null),
     [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [paired, setPaired] = useState<boolean | null>(null),
@@ -130,7 +129,7 @@ function App() {
     [filter, setFilter] = useState('all'),
     [sending, setSending] = useState(false);
   const [code, setCode] = useState(''),
-    [label, setLabel] = useState('我的浏览器');
+    [label, setLabel] = useState(t('我的浏览器'));
   const selectedRef = useRef(selected),
     cursor = useRef(0),
     generation = useRef(0),
@@ -280,7 +279,7 @@ function App() {
         if (stopped) return;
         if (e.code === 4001) {
           setPaired(false);
-          setError('设备会话已撤销或过期，请重新配对');
+          setError(t('设备会话已撤销或过期，请重新配对'));
           return;
         }
         setConnection('连接已断开');
@@ -365,13 +364,13 @@ function App() {
   const needsDecision = (c: Chat) =>
     c.status === 'waiting_approval' || c.status === 'waiting_input';
   const groups = [
-    { name: '已置顶', chats: filtered.filter((c) => c.pinned) },
-    { name: '等我处理', chats: filtered.filter((c) => !c.pinned && needsDecision(c)) },
-    { name: '最近聊天', chats: filtered.filter((c) => !c.pinned && !needsDecision(c)) },
+    { name: t('已置顶'), chats: filtered.filter((c) => c.pinned) },
+    { name: t('等我处理'), chats: filtered.filter((c) => !c.pinned && needsDecision(c)) },
+    { name: t('最近聊天'), chats: filtered.filter((c) => !c.pinned && !needsDecision(c)) },
   ];
   const decisions = snapshot?.requests.length ?? 0;
   const waiting = (snapshot?.requests.length ?? 0) + (snapshot?.queue?.length ?? 0);
-  const connectionText = paired === false ? '等待配对' : connection;
+  const connectionText = paired === false ? t('等待配对') : t(connection);
   return (
     <div className={'app ' + (selected ? 'has-selection' : '')}>
       <aside className="sidebar">
@@ -380,8 +379,8 @@ function App() {
           <span>Codex Pocket</span>
           <button
             className="compose-shortcut"
-            aria-label="新建聊天"
-            title="新建聊天"
+            aria-label={t('新建聊天')}
+            title={t('新建聊天')}
             disabled={!paired || !snapshot?.ready}
             onClick={() => setPanel('new')}
           >
@@ -391,7 +390,7 @@ function App() {
         <button className="host-switch" onClick={() => setPanel('hosts')}>
           <Server size={17} />
           <span>
-            {host?.name ?? '连接主机'}
+            {host?.name ?? t('连接主机')}
             <small>
               {host?.id.slice(0, 8)} · {connectionText}
             </small>
@@ -404,32 +403,32 @@ function App() {
           disabled={!paired}
         >
           <ListTodo size={18} />
-          <span>待处理列表</span>
+          <span>{t('待处理列表')}</span>
           <b>{waiting}</b>
           <ChevronRight size={15} />
         </button>
         <div className="search">
           <Search size={15} />
           <input
-            aria-label="搜索聊天"
-            placeholder="搜索聊天"
+            aria-label={t('搜索聊天')}
+            placeholder={t('搜索聊天')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="inbox-filters" role="group" aria-label="状态筛选">
+        <div className="inbox-filters" role="group" aria-label={t('状态筛选')}>
           {Object.entries({
-            all: '全部',
-            running: '运行中',
-            waiting: '等我处理',
-            ended: '已结束',
+            all: t('全部'),
+            running: t('运行中'),
+            waiting: t('等我处理'),
+            ended: t('已结束'),
           }).map(([key, label]) => (
             <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>
               {label}
             </button>
           ))}
         </div>
-        <nav className="chat-list" aria-label="聊天列表">
+        <nav className="chat-list" aria-label={t('聊天列表')}>
           {groups
             .filter((g) => g.chats.length)
             .map((g) => (
@@ -446,16 +445,16 @@ function App() {
                   >
                     <div className="chat-row-heading">
                       <div className="row-title">
-                        {c.pinned && <Pin size={12} aria-label="已置顶" />}
+                        {c.pinned && <Pin size={12} aria-label={t('已置顶')} />}
                         {c.title}
                       </div>
                       <time dateTime={new Date(c.updatedAt).toISOString()}>
                         {new Date(c.updatedAt).toDateString() === new Date().toDateString()
-                          ? new Date(c.updatedAt).toLocaleTimeString('zh-CN', {
+                          ? new Date(c.updatedAt).toLocaleTimeString(getLocale(), {
                               hour: '2-digit',
                               minute: '2-digit',
                             })
-                          : new Date(c.updatedAt).toLocaleDateString('zh-CN', {
+                          : new Date(c.updatedAt).toLocaleDateString(getLocale(), {
                               month: 'numeric',
                               day: 'numeric',
                             })}
@@ -472,16 +471,16 @@ function App() {
           {paired && !filtered.length && (
             <div className="list-empty">
               {search || filter !== 'all'
-                ? '没有符合当前搜索和状态条件的聊天。'
-                : '还没有聊天。选择工作目录，开始第一个任务。'}
+                ? t('没有符合当前搜索和状态条件的聊天。')
+                : t('还没有聊天。选择工作目录，开始第一个任务。')}
             </div>
           )}
         </nav>
         {paired && (
           <button className="quota-link" onClick={() => setPanel('usage')}>
-            <span>账号额度</span>
+            <span>{t('账号额度')}</span>
             <span>
-              {snapshot?.usage?.plan ?? snapshot?.usage?.accountType ?? '查看状态'}
+              {snapshot?.usage?.plan ?? snapshot?.usage?.accountType ?? t('查看状态')}
               <ChevronRight size={14} />
             </span>
           </button>
@@ -493,7 +492,7 @@ function App() {
           <span>{connectionText}</span>
           <button
             className="icon-button"
-            aria-label="设备与连接设置"
+            aria-label={t('设备与连接设置')}
             onClick={() => setPanel('settings')}
           >
             <Settings size={17} />
@@ -501,26 +500,28 @@ function App() {
         </div>
       </aside>
       <main className="main">
-        <div className="host-identity" aria-label="当前主机">
+        <div className="host-identity" aria-label={t('当前主机')}>
           <button onClick={() => setPanel('hosts')}>
             <Server size={14} />
-            <strong>{host?.name ?? '正在连接主机'}</strong>
+            <strong>{host?.name ?? t('正在连接主机')}</strong>
             <span>{host?.id.slice(0, 8)}</span>
             <ChevronDown size={13} />
           </button>
           <button
             onClick={() => setPanel('pending')}
             disabled={!paired}
-            aria-label={`待处理列表，${waiting} 项`}
+            aria-label={t('待处理列表，{0} 项', { 0: waiting })}
           >
             <ListTodo size={15} />
-            <span>待处理 {waiting}</span>
+            <span>
+              {t('待处理')} {waiting}
+            </span>
           </button>
         </div>
         <header className="chat-header">
           <button
             className="icon-button mobile-back"
-            aria-label="返回聊天列表"
+            aria-label={t('返回聊天列表')}
             onClick={() => setSelected(null)}
           >
             <ArrowLeft size={20} />
@@ -531,7 +532,7 @@ function App() {
               {chat && (
                 <button
                   className="icon-button"
-                  aria-label="整理聊天"
+                  aria-label={t('整理聊天')}
                   onClick={() => setPanel('organize')}
                 >
                   <Pencil size={14} />
@@ -545,14 +546,14 @@ function App() {
                   <span title={chat.cwd}>{chat.cwd}</span>
                 </>
               ) : (
-                <span>{paired ? '主机工作区' : '设备配对'}</span>
+                <span>{paired ? t('主机工作区') : t('设备配对')}</span>
               )}
             </div>
           </div>
           {chat && <Badge chat={chat} />}
           <button
             className="icon-button mobile-host"
-            aria-label="切换主机"
+            aria-label={t('切换主机')}
             onClick={() => setPanel('hosts')}
           >
             <Server size={18} />
@@ -561,43 +562,48 @@ function App() {
 
         {error && (
           <div className="error-banner" role="alert">
-            <span>{error}</span>
-            <button className="icon-button" aria-label="关闭错误提示" onClick={() => setError('')}>
+            <span>{t(error)}</span>
+            <button
+              className="icon-button"
+              aria-label={t('关闭错误提示')}
+              onClick={() => setError('')}
+            >
               <X size={16} />
             </button>
           </div>
         )}
         {paired && connection !== '实时连接' && (
           <div className="reconnect-banner" role="status">
-            {connection} · 正在恢复显示，主机任务可能仍在继续。
+            {t(connection)}
+            {t('· 正在恢复显示，主机任务可能仍在继续。')}
           </div>
         )}
         {paired === false ? (
           <section className="pair-screen">
             <div className="pair-guide">
               <Mark />
-              <h2>连接到你的主机</h2>
-              <p>在主机的项目目录运行以下命令，获取一次性配对码。</p>
+              <h2>{t('连接到你的主机')}</h2>
+              <p>{t('在主机的项目目录运行以下命令，获取一次性配对码。')}</p>
               <div className="pair-command">
                 <Terminal size={18} />
                 <code>npm run pair</code>
               </div>
-              <small>配对码在 10 分钟内有效，只能使用一次。</small>
+              <small>{t('配对码在 10 分钟内有效，只能使用一次。')}</small>
             </div>
             <form onSubmit={pair}>
               <label>
-                一次性配对码
+                {t('一次性配对码')}
                 <input
                   autoComplete="off"
                   spellCheck={false}
                   required
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  placeholder="输入主机生成的配对码"
+                  placeholder={t('输入主机生成的配对码')}
                 />
               </label>
               <label>
-                设备名称
+                {t('设备名称')}
                 <input
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
@@ -606,41 +612,43 @@ function App() {
                 />
               </label>
               <button className="primary" disabled={sending}>
-                {sending ? '正在配对…' : '配对并连接'}
+                {sending ? t('正在配对…') : t('配对并连接')}
                 <ArrowUp size={16} />
               </button>
             </form>
           </section>
         ) : paired === null ? (
-          <div className="center-note">正在连接主机…</div>
+          <div className="center-note">{t('正在连接主机…')}</div>
         ) : !chat ? (
           <section className="welcome">
-            <h2>主机工作区</h2>
-            <p>{snapshot?.ready ? host?.name : 'Codex 暂未就绪，请在主机检查登录与服务日志。'}</p>
+            <h2>{t('主机工作区')}</h2>
+            <p>
+              {snapshot?.ready ? host?.name : t('Codex 暂未就绪，请在主机检查登录与服务日志。')}
+            </p>
             <div className="workspace-counts">
               <div>
                 <strong>{snapshot?.chats.length ?? 0}</strong>
-                <span>全部聊天</span>
+                <span>{t('全部聊天')}</span>
               </div>
               <div>
                 <strong>{snapshot?.chats.filter((c) => c.status === 'running').length ?? 0}</strong>
-                <span>运行中</span>
+                <span>{t('运行中')}</span>
               </div>
               <button onClick={() => setPanel('pending')}>
                 <strong>{waiting}</strong>
                 <span>
-                  待处理 <ChevronRight size={13} />
+                  {t('待处理')} <ChevronRight size={13} />
                 </span>
               </button>
             </div>
             {snapshot?.error && <pre>{snapshot.error}</pre>}
             <button className="primary" onClick={() => setPanel('new')} disabled={!snapshot?.ready}>
               <Plus size={17} />
-              新建聊天
+              {t('新建聊天')}
             </button>
             {!!snapshot?.chats.length && (
               <div className="recent-chats">
-                <h3>最近活动</h3>
+                <h3>{t('最近活动')}</h3>
                 {snapshot.chats
                   .slice()
                   .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -676,14 +684,14 @@ function App() {
                     onClick={() => loadEntries(chat.id, entries[0]?.order)}
                     disabled={loading}
                   >
-                    {loading ? '正在加载…' : '加载更早的记录'}
+                    {loading ? t('正在加载…') : t('加载更早的记录')}
                   </button>
                 )}
                 {!entries.length && !loading && (
                   <div className="chat-empty">
                     <Terminal size={23} />
-                    <p>工作目录已就绪。</p>
-                    <span>描述你希望 Codex 完成的任务。</span>
+                    <p>{t('工作目录已就绪。')}</p>
+                    <span>{t('描述你希望 Codex 完成的任务。')}</span>
                   </div>
                 )}
                 {entries.map((entry) => (
@@ -715,7 +723,7 @@ function App() {
                 }}
               >
                 <ChevronDown size={15} />
-                查看最新输出
+                {t('查看最新输出')}
               </button>
             )}
             {host && (
@@ -773,16 +781,16 @@ function App() {
               <h2 id="modal-title">
                 {
                   {
-                    new: '新建聊天',
-                    hosts: '切换主机',
-                    settings: '设备与连接',
-                    pending: '待处理列表',
-                    usage: '账号额度',
-                    organize: '整理聊天',
+                    new: t('新建聊天'),
+                    hosts: t('切换主机'),
+                    settings: t('设备与连接'),
+                    pending: t('待处理列表'),
+                    usage: t('账号额度'),
+                    organize: t('整理聊天'),
                   }[panel]
                 }
               </h2>
-              <button className="icon-button" aria-label="关闭" onClick={() => setPanel(null)}>
+              <button className="icon-button" aria-label={t('关闭')} onClick={() => setPanel(null)}>
                 <X size={20} />
               </button>
             </header>
@@ -819,6 +827,7 @@ function App() {
               <OrganizePanel chat={chat} onDone={() => setPanel(null)} />
             ) : (
               <SettingsPanel
+                paired={paired === true}
                 onLogout={() => {
                   setPaired(false);
                   setSnapshot(null);
@@ -840,12 +849,12 @@ function EntryView({ entry }: { entry: Entry }) {
       <details className="tool-entry">
         <summary>
           <Terminal size={15} />
-          <span>{entry.kind === 'change' ? '文件修改' : entry.title}</span>
+          <span>{entry.kind === 'change' ? t('文件修改') : entry.title}</span>
           <small>
             {entry.status === 'completed'
-              ? '已完成'
+              ? t('已完成')
               : entry.status === 'running'
-                ? '执行中'
+                ? t('执行中')
                 : entry.status}
           </small>
           <ChevronDown size={14} />
@@ -856,18 +865,18 @@ function EntryView({ entry }: { entry: Entry }) {
   return (
     <article className={'message ' + entry.kind}>
       <div className="message-label">
-        {entry.kind === 'user' ? '你' : 'Codex'}
+        {entry.kind === 'user' ? t('你') : 'Codex'}
         <span>
           {entry.status === 'queued'
-            ? '等待执行'
+            ? t('等待执行')
             : entry.status === 'uncertain'
-              ? '发送结果待确认'
+              ? t('发送结果待确认')
               : entry.status === 'steered'
-                ? '已补充到当前任务'
+                ? t('已补充到当前任务')
                 : entry.status === 'sending'
-                  ? '正在确认发送'
+                  ? t('正在确认发送')
                   : entry.status === 'cancelled'
-                    ? '已取消'
+                    ? t('已取消')
                     : ''}
         </span>
       </div>
@@ -878,7 +887,12 @@ function EntryView({ entry }: { entry: Entry }) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              img: ({ alt }) => <span>[图片：{alt}]</span>,
+              img: ({ alt }) => (
+                <span>
+                  {t('[图片：')}
+                  {alt}]
+                </span>
+              ),
               a: ({ href, children }) => (
                 <a href={href} target="_blank" rel="noopener noreferrer">
                   {children}
@@ -923,17 +937,17 @@ function RequestCard({
     ? changes.map((c: any) => c.path).filter((p: any) => typeof p === 'string')
     : [];
   const command =
-    typeof request.params.command === 'string' ? request.params.command : '未提供命令预览';
+    typeof request.params.command === 'string' ? request.params.command : t('未提供命令预览');
   const actionTitle =
     request.kind === 'question'
-      ? '回答 Codex 的问题'
+      ? t('回答 Codex 的问题')
       : network
-        ? '审批网络访问'
+        ? t('审批网络访问')
         : isFiles
-          ? '审批文件修改'
+          ? t('审批文件修改')
           : isPermissions
-            ? '审批额外权限'
-            : '审批命令执行';
+            ? t('审批额外权限')
+            : t('审批命令执行');
   const submit = async (decision?: string) => {
     setBusy(true);
     try {
@@ -958,39 +972,41 @@ function RequestCard({
       </div>
       <dl className="approval-context">
         <div>
-          <dt>主机</dt>
+          <dt>{t('主机')}</dt>
           <dd>
             {host.name}
             <span>{host.id.slice(0, 8)}</span>
           </dd>
         </div>
         <div>
-          <dt>目录</dt>
+          <dt>{t('目录')}</dt>
           <dd>{request.params.cwd ?? chat.cwd}</dd>
         </div>
       </dl>
       <p className="request-reason">
         {request.params.reason ||
-          (request.kind === 'question' ? request.prompt : 'Codex 未提供具体原因，请检查操作内容。')}
+          (request.kind === 'question'
+            ? request.prompt
+            : t('Codex 未提供具体原因，请检查操作内容。'))}
       </p>
       {request.kind === 'approval' ? (
         <>
           {network ? (
             <p className="approval-action">
-              {network.protocol ?? '网络'}://{network.host ?? '未知目标'}
+              {network.protocol ?? t('网络')}://{network.host ?? t('未知目标')}
               {network.port ? ':' + network.port : ''}
             </p>
           ) : (
             !isFiles &&
             !isPermissions && (
               <div>
-                <pre className="command-preview" aria-label="准备执行的命令">
+                <pre className="command-preview" aria-label={t('准备执行的命令')}>
                   {command.slice(0, 500)}
                   {command.length > 500 ? '…' : ''}
                 </pre>
                 {command.length > 500 && (
                   <details className="approval-details">
-                    <summary>展开完整命令</summary>
+                    <summary>{t('展开完整命令')}</summary>
                     <pre>{command}</pre>
                   </details>
                 )}
@@ -1000,8 +1016,8 @@ function RequestCard({
           {isFiles && (
             <p className="approval-action">
               {request.params.grantRoot
-                ? `授权目录：${request.params.grantRoot}`
-                : '检查下方文件修改详情后再决定'}
+                ? t('授权目录：{0}', { 0: request.params.grantRoot })
+                : t('检查下方文件修改详情后再决定')}
             </p>
           )}
           {isFiles && paths.length > 0 && (
@@ -1013,13 +1029,13 @@ function RequestCard({
           )}
           {(isFiles || isPermissions) && (
             <details className="approval-details">
-              <summary>{isFiles ? '查看文件变更' : '查看权限明细'}</summary>
+              <summary>{isFiles ? t('查看文件变更') : t('查看权限明细')}</summary>
               <pre>
                 {typeof request.params.changes === 'string'
                   ? request.params.changes
                   : JSON.stringify(
                       request.params.permissions ??
-                        request.params.changes ?? { 提示: 'Codex 未返回变更详情' },
+                        request.params.changes ?? { 提示: t('Codex 未返回变更详情') },
                       null,
                       2,
                     )}
@@ -1027,37 +1043,39 @@ function RequestCard({
             </details>
           )}
           <label className="approval-scope">
-            批准范围
+            {t('批准范围')}
             <select
-              aria-label="批准范围"
+              aria-label={t('批准范围')}
               value={scope}
               onChange={(e) => setScope(e.target.value)}
               disabled={busy}
             >
-              <option value="accept">{isPermissions ? '当前轮次' : '仅本次操作'}</option>
-              {sessionAllowed && <option value="acceptForSession">此 Codex 会话的同类操作</option>}
+              <option value="accept">{isPermissions ? t('当前轮次') : t('仅本次操作')}</option>
+              {sessionAllowed && (
+                <option value="acceptForSession">{t('此 Codex 会话的同类操作')}</option>
+              )}
             </select>
           </label>
           <p className="scope-note">
             {scope === 'acceptForSession'
-              ? '会话授权由 Codex 缓存；同一审批范围内的后续操作可能不再询问，进程重启后不保留。'
+              ? t('会话授权由 Codex 缓存；同一审批范围内的后续操作可能不再询问，进程重启后不保留。')
               : isPermissions
-                ? '权限仅授予当前执行轮次。'
-                : '批准当前操作，后续请求仍需单独处理。'}
+                ? t('权限仅授予当前执行轮次。')
+                : t('批准当前操作，后续请求仍需单独处理。')}
           </p>
           <div className="request-actions">
             <button disabled={busy} onClick={() => submit('decline')}>
-              拒绝
+              {t('拒绝')}
             </button>
             <button className="primary" disabled={busy} onClick={() => submit(scope)}>
               <Check size={15} />
               {busy
-                ? '提交中…'
+                ? t('提交中…')
                 : scope === 'acceptForSession'
-                  ? '允许此会话范围'
+                  ? t('允许此会话范围')
                   : isPermissions
-                    ? '允许当前轮次'
-                    : '允许本次'}
+                    ? t('允许当前轮次')
+                    : t('允许本次')}
             </button>
           </div>
         </>
@@ -1091,12 +1109,12 @@ function RequestCard({
                 required
                 value={answers[q.id] ?? ''}
                 onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
-                placeholder="输入回答"
+                placeholder={t('输入回答')}
               />
             </div>
           ))}
           <button className="primary" disabled={busy}>
-            {busy ? '提交中…' : '提交回答'}
+            {busy ? t('提交中…') : t('提交回答')}
           </button>
         </form>
       )}
@@ -1149,17 +1167,17 @@ function NewChat({ onCreate, favorites }: { onCreate: (c: Chat) => void; favorit
       }}
     >
       <label>
-        聊天名称
+        {t('聊天名称')}
         <input
           autoFocus
-          placeholder="例如：修复登录问题"
+          placeholder={t('例如：修复登录问题')}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           maxLength={120}
         />
       </label>
       <label>
-        主机工作目录
+        {t('主机工作目录')}
         <input value={cwd} onChange={(e) => setCwd(e.target.value)} required />
       </label>
       <div className="favorite-directories">
@@ -1181,7 +1199,7 @@ function NewChat({ onCreate, favorites }: { onCreate: (c: Chat) => void; favorit
           }}
         >
           <Bookmark size={15} />
-          {savedDirs.includes(cwd) ? '取消收藏当前目录' : '收藏当前目录'}
+          {savedDirs.includes(cwd) ? t('取消收藏当前目录') : t('收藏当前目录')}
         </button>
         {savedDirs.map((p) => (
           <div key={p}>
@@ -1192,7 +1210,7 @@ function NewChat({ onCreate, favorites }: { onCreate: (c: Chat) => void; favorit
             <button
               type="button"
               className="icon-button"
-              aria-label={`取消收藏 ${p}`}
+              aria-label={t('取消收藏 {0}', { 0: p })}
               onClick={async () => {
                 try {
                   setSavedDirs(
@@ -1217,7 +1235,7 @@ function NewChat({ onCreate, favorites }: { onCreate: (c: Chat) => void; favorit
               .catch((e) => setFormError(e.message))
           }
         >
-          允许的项目目录
+          {t('允许的项目目录')}
         </button>
         {dirs.map((d) => (
           <button type="button" key={d.path} onClick={() => browse(d.path)}>
@@ -1228,9 +1246,9 @@ function NewChat({ onCreate, favorites }: { onCreate: (c: Chat) => void; favorit
         ))}
       </div>
       <label>
-        模型
+        {t('模型')}
         <select value={model} onChange={(e) => setModel(e.target.value)}>
-          <option value="">使用 Codex 默认模型</option>
+          <option value="">{t('使用 Codex 默认模型')}</option>
           {models.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name}
@@ -1238,14 +1256,14 @@ function NewChat({ onCreate, favorites }: { onCreate: (c: Chat) => void; favorit
           ))}
         </select>
       </label>
-      <div className="form-note">任务在所选目录执行。相同目录的任务按顺序运行。</div>
+      <div className="form-note">{t('任务在所选目录执行。相同目录的任务按顺序运行。')}</div>
       {formError && (
         <p role="alert" className="form-error">
-          {formError}
+          {t(formError)}
         </p>
       )}
       <button className="primary" disabled={busy || !cwd}>
-        {busy ? '正在创建…' : '创建聊天'}
+        {busy ? t('正在创建…') : t('创建聊天')}
         <Plus size={16} />
       </button>
     </form>
@@ -1268,7 +1286,7 @@ function HostPanel({
   return (
     <>
       <p className="modal-description">
-        切换主机后，原主机上的任务继续运行。首次访问每台主机都需要单独配对。
+        {t('切换主机后，原主机上的任务继续运行。首次访问每台主机都需要单独配对。')}
       </p>
       <div className="host-list">
         {hosts.map((h) => (
@@ -1280,7 +1298,7 @@ function HostPanel({
                 <small>{h.url}</small>
               </span>
               {h.url === current ? (
-                <span className="current-label">当前</span>
+                <span className="current-label">{t('当前')}</span>
               ) : (
                 <ChevronRight size={17} />
               )}
@@ -1288,7 +1306,7 @@ function HostPanel({
             {h.url !== current && (
               <button
                 className="icon-button"
-                aria-label={'移除主机 ' + h.name}
+                aria-label={t('移除主机 ') + h.name}
                 onClick={() => onHosts(hosts.filter((v) => v.url !== h.url))}
               >
                 <X size={15} />
@@ -1315,16 +1333,16 @@ function HostPanel({
         }}
       >
         <label>
-          主机名称
+          {t('主机名称')}
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="例如：家里的开发机"
+            placeholder={t('例如：家里的开发机')}
             maxLength={80}
           />
         </label>
         <label>
-          主机地址
+          {t('主机地址')}
           <input
             required
             value={url}
@@ -1334,69 +1352,94 @@ function HostPanel({
         </label>
         {error && (
           <p role="alert" className="form-error">
-            {error}
+            {t(error)}
           </p>
         )}
         <button className="primary">
           <Plus size={16} />
-          添加主机
+          {t('添加主机')}
         </button>
       </form>
-      <p className="form-note">列表只保存主机名称和地址，不包含登录凭据。</p>
+      <p className="form-note">{t('列表只保存主机名称和地址，不包含登录凭据。')}</p>
     </>
   );
 }
-function SettingsPanel({ onLogout }: { onLogout: () => void }) {
+function SettingsPanel({ onLogout, paired }: { onLogout: () => void; paired: boolean }) {
+  const locale = useLocale();
   const [sessions, setSessions] = useState<any[]>([]),
     [error, setError] = useState('');
   useEffect(() => {
+    if (!paired) return;
     api('/sessions')
       .then(setSessions)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [paired]);
   return (
     <>
-      <p className="modal-description">已配对的设备可以访问此主机上的 Codex 聊天。</p>
-      <div className="session-list">
-        {sessions.map((s) => (
-          <div key={s.id}>
-            <span>
-              {s.label}
-              <small>
-                {s.current ? '当前设备 · ' : ''}配对于 {new Date(s.createdAt).toLocaleDateString()}
-              </small>
-            </span>
-            <button
-              onClick={async () => {
-                try {
-                  await api(`/sessions/${s.id}/revoke`, {});
-                  if (s.current) onLogout();
-                  else setSessions((list) => list.filter((v) => v.id !== s.id));
-                } catch (e) {
-                  setError((e as Error).message);
-                }
-              }}
-            >
-              撤销
-            </button>
+      <section className="language-settings">
+        <label htmlFor="interface-language">{t('界面语言')}</label>
+        <select
+          id="interface-language"
+          value={locale}
+          onChange={(e) => setLocale(e.target.value as Locale)}
+        >
+          <option value="zh-CN" lang="zh-CN">
+            简体中文
+          </option>
+          <option value="en" lang="en">
+            English
+          </option>
+        </select>
+        <p className="form-note">{t('语言设置保存在此浏览器，聊天内容保持原文。')}</p>
+      </section>
+      {!paired ? (
+        <p className="form-note">{t('请先配对主机以管理设备。')}</p>
+      ) : (
+        <>
+          <p className="modal-description">{t('已配对的设备可以访问此主机上的 Codex 聊天。')}</p>
+          <div className="session-list">
+            {sessions.map((s) => (
+              <div key={s.id}>
+                <span>
+                  {s.label}
+                  <small>
+                    {s.current ? t('当前设备 · ') : ''}
+                    {t('配对于')} {new Date(s.createdAt).toLocaleDateString(getLocale())}
+                  </small>
+                </span>
+                <button
+                  onClick={async () => {
+                    try {
+                      await api(`/sessions/${s.id}/revoke`, {});
+                      if (s.current) onLogout();
+                      else setSessions((list) => list.filter((v) => v.id !== s.id));
+                    } catch (e) {
+                      setError((e as Error).message);
+                    }
+                  }}
+                >
+                  {t('撤销')}
+                </button>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {error && <p role="alert">{error}</p>}
-      <button
-        className="logout"
-        onClick={async () => {
-          try {
-            await api('/logout', {});
-            onLogout();
-          } catch (e) {
-            setError((e as Error).message);
-          }
-        }}
-      >
-        退出此主机
-      </button>
-      <p className="form-note">退出不会停止主机上的任务。</p>
+          {error && <p role="alert">{t(error)}</p>}
+          <button
+            className="logout"
+            onClick={async () => {
+              try {
+                await api('/logout', {});
+                onLogout();
+              } catch (e) {
+                setError((e as Error).message);
+              }
+            }}
+          >
+            {t('退出此主机')}
+          </button>
+          <p className="form-note">{t('退出不会停止主机上的任务。')}</p>
+        </>
+      )}
     </>
   );
 }

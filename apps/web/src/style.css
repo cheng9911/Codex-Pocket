@@ -1,5 +1,27 @@
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: url('./assets/fonts/AlibabaPuHuiTi-3-55-Regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: url('./assets/fonts/AlibabaPuHuiTi-3-65-Medium.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: url('./assets/fonts/AlibabaPuHuiTi-3-75-SemiBold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
 :root {
-  font-family: Inter, 'Noto Sans CJK SC', sans-serif;
+  font-family: 'Alibaba PuHuiTi', 'Noto Sans CJK SC', sans-serif;
   color: #f3f3f3;
   background: #0b0b0b;
   font-synthesis: none;
@@ -448,7 +470,7 @@ h1 {
   padding: 12px;
   cursor: pointer;
   color: #c6c6c6;
-  font-family: Inter, sans-serif;
+  font-family: 'Alibaba PuHuiTi', sans-serif;
   font-size: 11px;
   list-style: none;
   min-height: 44px;
@@ -460,7 +482,7 @@ h1 {
   text-overflow: ellipsis;
 }
 .tool-entry small {
-  font-family: Inter, sans-serif;
+  font-family: 'Alibaba PuHuiTi', sans-serif;
   font-size: 10px;
 }
 .tool-entry pre {
@@ -2401,4 +2423,40 @@ h1 {
   .composer-toolbar button {
     min-height: 44px;
   }
+}
+
+.language-settings {
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.language-settings label {
+  display: block;
+  margin-bottom: 8px;
+}
+.language-settings select {
+  width: 100%;
+  min-height: 44px;
+}
+html[lang='en'] .inbox-filters button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  padding-inline: 4px;
+  font-size: 11px;
+}
+@media (max-width: 760px) {
+  html[lang='en'] .composer-toolbar .delivery-row {
+    gap: 2px;
+  }
+  html[lang='en'] .composer-toolbar select {
+    font-size: 12px;
+    padding-inline: 4px;
+  }
+  html[lang='en'] .composer-toolbar .send-intent {
+    font-size: 12px;
+  }
+}
+
+html[lang='en'] .approval-context > div {
+  grid-template-columns: 62px minmax(0, 1fr);
 }

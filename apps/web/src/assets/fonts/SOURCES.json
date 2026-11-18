@@ -1,0 +1,26 @@
+{
+  "downloaded": "2026-11-18",
+  "homepage": "https://www.alibabafonts.com",
+  "notice": "https://www.yuque.com/yiguang-wkqc2/hgpff0/nus9wiinq4aeiegy",
+  "noticeTranscription": "https://github.com/flyanx/html-poster-to-psd/blob/main/fonts/LICENSE-AlibabaPuHuiTi-3.0.md",
+  "files": [
+    {
+      "file": "AlibabaPuHuiTi-3-55-Regular.woff2",
+      "source": "https://fonts.alibabadesign.com/AlibabaPuHuiTi-3/AlibabaPuHuiTi-3-55-Regular/AlibabaPuHuiTi-3-55-Regular.woff2",
+      "sha256": "1cb8418d80b01ec08cb6f2d64b6244aaaf1bb80dc35491b66ddba16c5e24f444",
+      "bytes": 5256740
+    },
+    {
+      "file": "AlibabaPuHuiTi-3-65-Medium.woff2",
+      "source": "https://fonts.alibabadesign.com/AlibabaPuHuiTi-3/AlibabaPuHuiTi-3-65-Medium/AlibabaPuHuiTi-3-65-Medium.woff2",
+      "sha256": "628a0d5be684bae0e7a8e3ad15b7c4f623fd15b3375082624f778326e343467a",
+      "bytes": 5469328
+    },
+    {
+      "file": "AlibabaPuHuiTi-3-75-SemiBold.woff2",
+      "source": "https://fonts.alibabadesign.com/AlibabaPuHuiTi-3/AlibabaPuHuiTi-3-75-SemiBold/AlibabaPuHuiTi-3-75-SemiBold.woff2",
+      "sha256": "75e2ba042e1c8ad8cf3dd5bf26f25984ffeca6c4ebb86977c8f8e1abeeb2652f",
+      "bytes": 5481108
+    }
+  ]
+}
