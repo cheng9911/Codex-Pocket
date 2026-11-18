@@ -34,6 +34,7 @@ import type {
   HostInfo,
 } from '../../../packages/types.ts';
 import { api, operation } from './api.ts';
+import { subscribeToEvents } from './event-stream.ts';
 import './style.css';
 import { MessageComposer, UsagePanel, PendingPanel, OrganizePanel } from './features.tsx';
 
@@ -144,10 +145,8 @@ function App() {
   const passwordMode = host?.authMode === 'password';
   const selectedRef = useRef(selected),
     cursor = useRef(0),
-    generation = useRef(0),
     scroller = useRef<HTMLDivElement>(null),
-    follow = useRef(true),
-    socket = useRef<WebSocket | null>(null);
+    follow = useRef(true);
   const entryGeneration = useRef(0),
     [newOutput, setNewOutput] = useState(false);
   const liveEntries = useRef(new Map<string, { seq: number; entry: Entry }>()),
@@ -235,13 +234,11 @@ function App() {
       );
       if (selectedRef.current === id && entryGeneration.current === gen) {
         setEntries((old) => {
+          const incoming = new Set(result.entries.map((entry) => entry.id));
           let next = before
-            ? [...result.entries, ...old.filter((e) => !result.entries.some((n) => n.id === e.id))]
+            ? [...result.entries, ...old.filter((entry) => !incoming.has(entry.id))]
             : refresh
-              ? [
-                  ...old.filter((e) => !result.entries.some((n) => n.id === e.id)),
-                  ...result.entries,
-                ]
+              ? [...old.filter((entry) => !incoming.has(entry.id)), ...result.entries]
               : result.entries;
           for (const { seq, entry } of liveEntries.current.values())
             if (entry.chatId === id && seq > result.cursor) {
@@ -278,38 +275,35 @@ function App() {
     selected ? u.searchParams.set('chat', selected) : u.searchParams.delete('chat');
     history.replaceState(null, '', u);
   }, [selected, host?.id, paired]);
+  const readingLocalHistory = chat?.source === 'codex' && (chat.control ?? 'history') === 'history';
   useEffect(() => {
-    if (!paired || !selected || chat?.source !== 'codex' || !snapshot?.ready) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible' && !loading)
-        void loadEntries(selected, undefined, true);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [paired, selected, chat?.source, snapshot?.ready, loading]);
+    if (!paired || !selected || !readingLocalHistory || !snapshot?.ready || loading) return;
+    let stopped = false;
+    const refresh = async () => {
+      if (document.visibilityState === 'visible') await loadEntries(selected, undefined, true);
+      if (!stopped) timer = setTimeout(refresh, 5000);
+    };
+    let timer = setTimeout(refresh, 5000);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [paired, selected, readingLocalHistory, snapshot?.ready, loading]);
   useEffect(() => {
     if (paired) api('/usage').catch(() => {});
   }, [paired]);
   useEffect(() => {
     if (!paired) return;
-    let stopped = false,
-      timer: ReturnType<typeof setTimeout>,
-      attempt = 0;
-    const gen = ++generation.current;
-    const connect = () => {
-      if (stopped) return;
-      setConnection('连接中');
-      const url = new URL('/api/events', location.href);
-      url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      url.searchParams.set('after', String(cursor.current));
-      const ws = new WebSocket(url);
-      socket.current = ws;
-      ws.onopen = () => {
-        attempt = 0;
-        setConnection('实时连接');
-      };
-      ws.onmessage = (event) => {
-        if (gen !== generation.current) return;
-        const data = JSON.parse(event.data);
+    return subscribeToEvents({
+      cursor: () => cursor.current,
+      onState: setConnection,
+      onExpired() {
+        setPaired(false);
+        setSnapshot(null);
+        setError('设备授权已撤销或过期，请重新登录');
+        void api<HostInfo>('/host').then(setHost).catch(() => {});
+      },
+      onMessage(data) {
         if (data.type === 'snapshot') {
           setSnapshot(data.data);
           cursor.current = data.data.cursor;
@@ -353,48 +347,8 @@ function App() {
             if (!follow.current) setNewOutput(true);
           }
         }
-      };
-      ws.onclose = async (e) => {
-        if (stopped) return;
-        const expired = async () => {
-          setPaired(false);
-          setSnapshot(null);
-          setError('设备授权已撤销或过期，请重新登录');
-          try {
-            const h = await api<HostInfo>('/host');
-            setHost(h);
-          } catch {}
-        };
-        if (e.code === 4001) {
-          await expired();
-          return;
-        }
-        setConnection('连接已断开');
-        // Reconnect independently: a slow auth probe must not leave the UI online
-        // or prevent recovery when the phone switches networks.
-        timer = setTimeout(connect, Math.min(15000, 500 * 2 ** attempt++) + Math.random() * 300);
-        try {
-          await api('/snapshot');
-        } catch (error) {
-          if (stopped) return;
-          if ((error as { status?: number }).status === 401) await expired();
-        }
-      };
-      ws.onerror = () => ws.close();
-    };
-    connect();
-    const foreground = () => {
-      if (document.visibilityState === 'visible') {
-        socket.current?.close();
-      }
-    };
-    document.addEventListener('visibilitychange', foreground);
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      socket.current?.close();
-      document.removeEventListener('visibilitychange', foreground);
-    };
+      },
+    });
   }, [paired]);
   useEffect(() => {
     if (follow.current && scroller.current)

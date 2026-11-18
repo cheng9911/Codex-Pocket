@@ -4,6 +4,8 @@
 
 浏览器通过 HTTPS 发请求、WSS 接收事件。每台主机有独立 ID、SQLite、设备授权和 Codex app-server 子进程。浏览器只连接当前所选主机；离开页面不改变进程生命周期。
 
+远程部署由 Cloudflare Tunnel 提供公网 HTTPS 和 WSS，Ubuntu 上的 `cloudflared` 通过出站连接把请求转发到 Pocket 的本机回环地址。Pocket 仍校验公网域名和请求来源，设备授权由当前主机签发。每台主机配置独立隧道和子域名。 [部署步骤](../README.md#安卓手机连接主机)
+
 `packages/codex-transport/vendor` 保留 T3 固定提交 `983654b3b2f7267a69e3d5d049d781aadbbc3166` 的 10 个源码文件，未修改。`UPSTREAM.json` 记录各文件 SHA-256，`verify:vendor` 检测漂移。Effect 4.1.3 与 Node 平台层 4.1.2 按该上游版本锁定。
 
 我们使用该包的原始协议传输层及子进程适配工具，负责 JSONL framing、请求匹配、双向请求、错误传播、进程结束和作用域清理。应用自己的适配层处理消息负载，避免上游生成 schema 对版本漂移的事件静默丢弃。没有复制完整 T3 编排器，也没有重写 JSON-RPC 传输。

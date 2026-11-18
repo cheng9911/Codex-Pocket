@@ -5,6 +5,8 @@ import { WebSocket } from 'ws';
 import { createHttp } from '../apps/server/src/http.ts';
 import { setup, waitFor } from './helpers.ts';
 import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 test('pairing is one-use; HTTP and WS enforce authentication and origin; revocation closes socket', async () => {
   const env = await setup(),
@@ -40,12 +42,44 @@ test('pairing is one-use; HTTP and WS enforce authentication and origin; revocat
       headers: { Cookie: cookie, Origin: base },
     });
     const first = await once(ws, 'message');
-    assert.equal(JSON.parse(first[0].toString()).type, 'snapshot');
+    const snapshot = JSON.parse(first[0].toString());
+    assert.equal(snapshot.type, 'snapshot');
+    assert.equal(snapshot.heartbeatMs, 20_000);
     const session = (await (await request('/sessions', undefined, cookie)).json())[0];
     const closed = once(ws, 'close');
     assert.equal((await request(`/sessions/${session.id}/revoke`, {}, cookie)).status, 200);
     assert.equal((await closed)[0], 4001);
     assert.equal((await request('/snapshot', undefined, cookie)).status, 401);
+  } finally {
+    await server.close();
+    await env.close();
+  }
+});
+test('only fingerprinted frontend assets are publicly cacheable', async () => {
+  const env = await setup();
+  const staticDir = join(env.root, 'web');
+  await mkdir(join(staticDir, 'assets'), { recursive: true });
+  await Promise.all([
+    writeFile(join(staticDir, 'index.html'), 'test page'),
+    writeFile(join(staticDir, 'assets', 'font-aBcD_123.woff2'), 'test font'),
+    writeFile(join(staticDir, 'assets', 'plain.js'), 'test script'),
+  ]);
+  const server = createHttp(env.service, { staticDir });
+  await new Promise<void>((ready) => server.http.listen(0, '127.0.0.1', ready));
+  const address = server.http.address();
+  assert.ok(address && typeof address !== 'string');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const asset = await fetch(`${base}/assets/font-aBcD_123.woff2`);
+    assert.equal(asset.status, 200);
+    assert.equal(asset.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    const token = server.auth.exchange(server.auth.pairCode(), 'test', 'test');
+    const headers = { Cookie: `${server.auth.cookieName}=${token}` };
+    for (const path of ['/', '/assets/plain.js', '/api/snapshot']) {
+      const response = await fetch(base + path, { headers });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+    }
   } finally {
     await server.close();
     await env.close();

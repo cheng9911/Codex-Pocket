@@ -1,18 +1,23 @@
 # Codex Pocket
 
-用安卓浏览器查看和控制主机上的 Codex：查看多个聊天的实时进度、发送指令、审批操作、回答问题和停止当前任务。可以手动切换不同主机，每台主机保留自己的聊天、代码和 Codex 登录状态。
+Codex Pocket 是自托管的 Codex 网页控制台。安卓手机和电脑都能查看实时任务、发送消息、审批操作、回答问题或停止当前轮次。多台主机可以分别部署，聊天、代码和 Codex 登录状态留在各自主机。
 
-**手机使用浏览器即可，不需要安装 ChatGPT。** 主机运行 Pocket 服务和 Codex；主机需要保持开机、联网且不休眠。当前交付是网页，Android APK 后续再做。
+**远程使用时，在浏览器打开自己的 Pocket HTTPS 地址，并输入这台主机的密码。** 主机通过 Cloudflare Tunnel 提供访问，手机无需安装 Tailscale 或 ChatGPT。当前提供网页，Android APK 尚未发布。
 
 ## 使用路线
 
-1. [先在电脑上启动并登录](#先在电脑上启动并登录)。
-2. [查看并继续本机已有聊天](#查看并继续本机已有聊天)，或[在网页完成第一个任务](#完成第一个任务)。
-3. [通过 Tailscale 从安卓连接](#安卓手机连接主机)。
-4. 日常使用：[消息与审批](#消息与审批)、[整理与设置](#整理与设置)、[切换主机](#连接多台主机)。
-5. 长期使用：[后台运行](#linux-后台运行)、[更新与数据](#更新与数据)、[常见问题](#常见问题)。
+1. [在电脑上安装、设置主机密码并启动](#先在电脑上启动并登录)。
+2. [配置 Cloudflare Tunnel，让安卓通过 HTTPS 登录](#安卓手机连接主机)。
+3. [查看历史、同步桌面任务](#查看并继续本机已有聊天)，或[在网页新建任务](#完成第一个任务)。
+4. 日常使用见[消息与审批](#消息与审批)、[整理与设置](#整理与设置)和[切换主机](#连接多台主机)。长期使用见[后台运行](#linux-后台运行)、[更新与数据](#更新与数据)和[常见问题](#常见问题)。
 
-现在支持列出本机已有 Codex 聊天、查看历史，以及通过 **“连接桌面同步”** 查看并控制桌面端正在运行的同一个任务：发送消息、追加指令、命令审批和停止已完成真实联调。无需退出 Codex 桌面应用。桌面桥接目前是基于本机 Linux 桌面版本验证的实验功能，使用内部 IPC 协议；不是 OpenAI 公开稳定 API。聊天迁移、worktree 管理和锁屏推送暂未实现。
+| 你的目标 | 在 Pocket 里选择 |
+| --- | --- |
+| 看本机已有聊天的保存记录 | 打开对应聊天，进入「历史查看」 |
+| 控制桌面端仍在运行的同一个聊天 | 在 Linux Codex 桌面打开该聊天，再点击 Pocket 的「连接桌面同步」 |
+| 让 Pocket 独立执行 | 「新建聊天」，或在原端结束并释放已有聊天后选择「在 Pocket 中继续」 |
+
+桌面同步通过 Linux 桌面应用的内部 IPC 实现，属于实验功能。已在记录的桌面版本上验证发送、追加指令、命令审批和停止。详细覆盖范围与版本见[桌面桥接验证](docs/verification.md#桌面-ipc-桥接)。
 
 ## 先在电脑上启动并登录
 
@@ -68,7 +73,7 @@ POCKET_ROOTS=/
 npm run password:set
 ```
 
-在终端输入两次你自己的密码（输入不回显）。密码不能为空，不限制长度或字符组合，支持短密码、中文、空格和符号。不用把密码发送到聊天里，也不要把密码写进命令行参数。
+在终端输入两次你自己的密码（输入不回显）。密码不能为空，支持中文、空格和符号。发布到公网时请为每台主机设置独立、难猜的密码。只在本机终端输入密码，避免把它写进命令行参数。
 
 默认配置文件为 **`~/.local/share/codex-pocket/auth.json`**。它保存随机盐和 scrypt 密码哈希，不保存可读明文；Linux 权限为 `600`。手机登录时输入原密码即可，不需要输入哈希。
 
@@ -99,15 +104,7 @@ Pocket 在浏览器中保存当前主机的独立会话 Cookie，不自行保存
 
 ## 查看并继续本机已有聊天
 
-升级后先在原运行终端按 `Ctrl+C` 停止 Pocket（等 Pocket 的任务结束后再操作），然后执行：
-
-```bash
-cd /home/rocos/Documents/GitHub/Codex-Pocket
-npm run build
-npm start
-```
-
-刷新网页并登录。侧栏会自动读取**运行 Pocket 的系统用户、当前 Codex 环境**中的已有聊天；不是按 ChatGPT 账号从云端下载。无需再次设置已经配置好的主机密码。
+从较早版本升级的用户请先按[更新步骤](#更新与数据)重新构建和启动。刷新网页并登录，侧栏会自动读取运行 Pocket 的系统用户在当前 Codex 环境中的已有聊天。沿用这台主机已配置的密码即可。
 
 1. **保持 Codex 桌面应用打开。** Pocket 与桌面应用必须以同一个系统用户运行。
 2. 在 Pocket 侧栏选择已有聊天；默认先显示历史。聊天未出现时点击“刷新本机聊天”，更早聊天可点击“加载更多本机聊天”。
@@ -125,7 +122,7 @@ Linux 默认连接当前用户的 `~/.codex/ipc/ipc.sock`；设置了 `CODEX_HOM
 
 ```dotenv
 # 必须是当前用户拥有的本地 Unix socket，不能填写手机地址或 TCP 端口。
-POCKET_DESKTOP_SOCKET=/home/rocos/.codex/ipc/ipc.sock
+POCKET_DESKTOP_SOCKET=/home/your-user/.codex/ipc/ipc.sock
 ```
 
 `CODEX_BIN` 仍用于本机聊天列表、历史读取及 Pocket 自建聊天。桌面同步的发消息、审批、停止通过 IPC 转交桌面端，不会再次 resume 该聊天或抢占写入锁。
@@ -141,9 +138,9 @@ POCKET_DESKTOP_SOCKET=/home/rocos/.codex/ipc/ipc.sock
 
 ### 断线和兼容性
 
-- **手机断线/刷新：** 主机继续接收桌面事件，手机重连后同步状态；不会自动重发未确认的消息。
-- **桌面应用退出、IPC 断开：** 显示已断开，旧审批失效，未发送的排队消息取消。重新打开桌面并点击“连接桌面同步”；不会自动重放审批或消息。
-- **Pocket 服务重启：** 已有聊天回到历史查看，重新点击“连接桌面同步”即可；桌面任务不受服务重启影响。
+- 网页显示 **「连接已断开」** 时，手机到 Pocket 的实时连接需要恢复。连接断开、握手超时或前台心跳超时后，网页会自动重连。切回前台时会继续使用健康的连接。主机持续接收桌面事件，手机重连后刷新展示。若发送结果待确认，先核对聊天记录。
+- 聊天显示 **「桌面同步 · 已断开」** 时，Pocket 和桌面应用之间的本机连接已断开，旧审批失效，未发送的排队消息取消。让桌面保持打开并打开对应聊天，再点「连接桌面同步」。
+- 重启 Pocket 服务会中断 **Pocket 自己执行**的轮次。桌面应用中的轮次继续运行，需要在网页重新连接桌面同步。
 - **版本范围：** 实测 Linux 桌面 `26.1103.31037`，状态流版本 `11`。内部协议可能随桌面升级变化；不匹配时停止控制并显示错误，不能承诺其他版本、Windows 或 macOS 已验证。
 - **内容范围：** 同步文字、命令输出、文件修改记录和支持的审批/问题。桌面专属画布、浏览器交互、图片等不等同于桌面画面镜像；无法处理的请求应在桌面完成。
 - **任务归属：** 只连接桌面已持有的聊天，不保证可连接单独 CLI/VS Code 进程。桌面同步遵循该聊天原有权限；不会为了手机控制自动降低审批要求。
@@ -169,38 +166,105 @@ POCKET_DESKTOP_SOCKET=/home/rocos/.codex/ipc/ipc.sock
 
 ## 安卓手机连接主机
 
-**手机上的 `127.0.0.1` 指向手机自己，不能用它连接电脑。** 远程路线使用 Tailscale 和主机的 HTTPS 地址。
+访问链路是 **安卓浏览器 → Cloudflare HTTPS / WebSocket → 主机上的 `cloudflared` → `127.0.0.1:4310` 上的 Pocket**。浏览器通过同一个 HTTPS 地址收发消息和接收实时事件。主机向 Cloudflare 发起出站连接，无需公网 IP 或路由器端口转发。
 
-### 1. 配置主机上的 Tailscale 和 HTTPS
+以下以 **Ubuntu / Linux、Bash、`pocket.example.com`** 为例。用你自己的域名替换示例，先完成[本机安装、构建和固定密码设置](#先在电脑上启动并登录)。如果已有自己的 Pocket HTTPS 地址，可直接跳到[安卓登录](#5-安卓登录)。
 
-在 Ubuntu 等使用 systemd 的 Linux 主机上，以运行 Pocket 的普通用户进入仓库并执行：
+### 1. 在 Cloudflare 准备域名
+
+使用一个你能管理 DNS 的域名，并在 Cloudflare 控制台确认它的状态是 **Active**。已由 Cloudflare 托管的域名可直接用一个空闲子域名，比如 `pocket.example.com`。
+
+如果现有 DNS 托管在别处，先导出并核对网站、邮箱和域名验证记录，例如 A、AAAA、CNAME、MX、TXT。将这些记录复制到 Cloudflare，再在**域名注册商**处换成 Cloudflare 分配的两条域名服务器。如果已启用 DNSSEC，按迁移文档处理旧 DS 记录，等域名激活后再在 Cloudflare 重新启用。切换后验证原有网站和邮件服务。已有站点可以保留原解析目标，继续使用原主机。 [Cloudflare DNS 迁移步骤](https://developers.cloudflare.com/dns/zone-setups/full-setup/setup/)
+
+### 2. 创建隧道并启动主机连接器
+
+1. 打开 **Cloudflare 控制台 → Networking → Tunnels → Create Tunnel**，给隧道命名，例如 `codex-pocket-home`。
+2. 在 Ubuntu 上执行 `dpkg --print-architecture` 查看架构，下载对应的 `cloudflared` `.deb` 包。在下载目录执行 `sudo apt install ./cloudflared-linux-amd64.deb`（将文件名替换为下载的文件名），再运行 `cloudflared --version`。 [Cloudflare 官方安装包](https://developers.cloudflare.com/tunnel/downloads/)
+3. 在隧道安装页选择 Linux 和主机架构。从 Cloudflare 生成的安装命令中复制 `service install` 后面的**隧道 Token**。按下面的步骤保存 Token，以当前用户运行连接器。 [Cloudflare 隧道配置步骤](https://developers.cloudflare.com/tunnel/get-started/)
+
+以下命令只在运行 Pocket 的主机终端执行。按提示粘贴 Token 并回车，输入不会回显。Token 文件位于仓库外，权限为 `600`。
 
 ```bash
-bash scripts/setup-tailscale.sh
+(
+  set -eu
+  umask 077
+  mkdir -p "$HOME/.config/codex-pocket"
+  printf '粘贴 Cloudflare 隧道 Token 并回车：'
+  IFS= read -rs tunnel_token
+  printf '\n'
+  test -n "$tunnel_token"
+  token_file="$HOME/.config/codex-pocket/cloudflare-tunnel.token"
+  printf '%s\n' "$tunnel_token" > "$token_file"
+  chmod 600 "$token_file"
+)
 ```
 
-脚本需要 Node.js、`curl` 和 `sudo`。如果缺少 Tailscale，脚本会使用官方安装器，再引导你登录 tailnet。若终端提供启用 HTTPS 的链接，请在浏览器中完成设置，按终端提示继续。脚本会读取 `.env` 的 `POCKET_PORT`，通过 Tailscale Serve 将 HTTPS 443 转发到本机的 `127.0.0.1` 对应端口，并将实际地址写入 `POCKET_ORIGIN`。遇到已有的其他 443 转发或 Funnel 时，脚本会提示你先检查配置。 [Linux 安装文档](https://tailscale.com/docs/install/linux) · [Serve 文档](https://tailscale.com/docs/features/tailscale-serve)
+首次安装时，复制下面整段生成并启用用户服务。若已用 Cloudflare 面板的命令安装并启动了系统级 `cloudflared` 服务，直接确认该隧道为 `Healthy`，即可进入下一步。
 
-### 2. 重启 Pocket 并验证地址
+```bash
+(
+  set -eu
+  cloudflared_bin=$(command -v cloudflared)
+  mkdir -p "$HOME/.config/systemd/user"
+  cat > "$HOME/.config/systemd/user/codex-pocket-cloudflared.service" <<EOF
+[Unit]
+Description=Cloudflare Tunnel connector for Codex Pocket
 
-等当前任务结束后重启 Pocket。前台运行时在原终端按 `Ctrl+C` 后重新执行 `npm start`。已安装后台服务时使用 `systemctl --user restart codex-pocket`。
+[Service]
+ExecStart="$cloudflared_bin" tunnel --no-autoupdate --protocol http2 run --token-file %h/.config/codex-pocket/cloudflare-tunnel.token
+Restart=on-failure
+RestartSec=5
+UMask=0077
 
-设置 `POCKET_ORIGIN` 后，电脑和手机都使用脚本打印的 HTTPS 地址。可以在电脑打开该地址的 `/api/host`，看到主机名称等 JSON 信息就表示 HTTPS 已转发到 Pocket。从本地地址切换至 HTTPS 地址时需要重新登录。
+[Install]
+WantedBy=default.target
+EOF
+  systemctl --user daemon-reload
+  systemctl --user enable --now codex-pocket-cloudflared.service
+)
+```
 
-### 3. 安卓加入同一个 tailnet
+在 Cloudflare 控制台确认隧道为 **Healthy**。如果主机的出站网络有限制，这个配置需要能连到 Cloudflare 的 TCP `7844`。Token 只用于连接器，手机登录使用独立的 Pocket 主机密码。更换 Token 后，用 `systemctl --user restart codex-pocket-cloudflared` 重新加载。 [Cloudflare 隧道网络要求](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/tunnel-with-firewall/)
 
-在安卓安装 Tailscale，使用与电脑相同的账号登录，并允许建立 VPN 连接。在 Tailscale 的设备管理页确认电脑和安卓出现在同一个 tailnet。如果使用自定义访问策略，允许手机访问主机的 TCP 443。 [安卓安装文档](https://tailscale.com/docs/install/android) · [设备管理页](https://login.tailscale.com/admin/machines)
+### 3. 配置 Pocket 的 HTTPS 来源
 
-手机通过 tailnet 访问 Pocket。访问 Codex 服务的网络环境由主机负责。浏览器语音识别可能需要访问浏览器自己的在线服务。
+在仓库目录里编辑已有的 `.env`，替换旧的 `POCKET_ORIGIN`。保留已经设置的主机名、工作目录和密码配置路径。
 
-### 4. 手机打开并登录
+```dotenv
+POCKET_HOST=127.0.0.1
+POCKET_PORT=4310
+POCKET_ORIGIN=https://pocket.example.com
+```
 
-1. 保持安卓 Tailscale 已连接。
-2. 在安卓浏览器中打开主机的 HTTPS 地址。
-3. 输入这台主机的固定密码，设备名称可填“我的安卓手机”，勾选“记住此设备（30 天）”。
-4. 点击“登录此主机”，以后从同一浏览器进入该地址即可直接使用，直到授权过期或撤销。
+等 Pocket 任务结束后重启服务。前台运行时在原终端按 `Ctrl+C`，再执行 `npm start`。如果已经安装后台服务，执行 `systemctl --user restart codex-pocket`；首次设置后台运行见 [Linux 后台运行](#linux-后台运行)。设置公网来源后，电脑也改用相同的 HTTPS 地址。旧地址的浏览器授权不会带到新域名，首次访问需要重新登录。
 
-可把这个地址加入浏览器书签；是否支持“添加到主屏幕”由浏览器决定。主机休眠、关机或 Pocket 停止时，手机无法控制任务。当前尚未完成安卓真机、蜂窝网络及真实 tailnet 联调，详见[验证边界](docs/verification.md#尚未验证的部署条件)。
+### 4. 发布并验证子域名
+
+打开刚创建的隧道，进入 **Routes → Add route → Published application**，填写以下内容并发布。
+
+| 字段 | 示例 |
+| --- | --- |
+| Subdomain | `pocket` |
+| Domain | `example.com` |
+| Path | 留空，网页、API 和实时事件共用域名 |
+| Service URL | `http://127.0.0.1:4310`，端口与 `POCKET_PORT` 一致 |
+
+Cloudflare 会为子域名创建 DNS 记录。若同名记录已存在，先查清原用途再处理。保留默认的 Host 转发，让 Pocket 收到公网域名。发布后登录页可从公网访问，查看聊天和控制任务需要已授权的会话。 [Cloudflare 发布路由说明](https://developers.cloudflare.com/tunnel/get-started/#publish-an-application)
+
+```bash
+curl -fsS https://pocket.example.com/api/host
+curl -sS -o /dev/null -w '%{http_code}\n' https://pocket.example.com/api/snapshot
+```
+
+第一条应返回包含主机名和 `"authMode":"password"` 的 JSON，第二条未带会话，应返回 `401`。从旧版 Tailscale Serve 迁移时，先验证新域名可用。如果这台主机仅为 Pocket 使用 Tailscale，可执行 `sudo systemctl disable --now tailscaled.service` 停止它并关闭开机启动。
+
+### 5. 安卓登录
+
+1. 用安卓浏览器打开你发布的 HTTPS 地址，例如 `https://pocket.example.com`。
+2. 输入这台主机的固定密码，给设备起名，勾选「记住此设备（30 天）」。
+3. 点击「登录此主机」。查看桌面上的当前任务时，保持桌面 Codex 打开并选择对应聊天，点击「连接桌面同步」。
+
+可把这个地址加入书签或浏览器支持的主屏幕快捷方式。主机需要保持联网、唤醒且 Pocket 和连接器均在运行。公网部署和设备实测进度见[验证记录](docs/verification.md#cloudflare-tunnel-部署)。
 
 ## 消息与审批
 
@@ -253,12 +317,12 @@ bash scripts/setup-tailscale.sh
 
 **额度：** 显示当前主机 Codex 实际返回的账号额度及重置时间，不估算还能发送多少条消息。API Key 或自定义供应商可能不返回额度信息。
 
-**字体：** 中英文界面使用随应用部署的阿里巴巴普惠体 3.0，代码和命令使用 IBM Plex Mono。三种普惠体字体文件合计约 16 MB；当前服务采用 `no-store` 响应策略，重新打开页面可能再次下载，不保证浏览器持久缓存。网页不访问外部字体 CDN。
+**字体：** 中英文界面使用随应用部署的阿里巴巴普惠体 3.0，代码和命令使用 IBM Plex Mono。三种普惠体字体文件合计约 16 MB。字体、脚本和样式使用带版本指纹的文件名，可由浏览器缓存。首次打开或缓存清除后，字体加载仍取决于网络速度。
 
 ## 连接多台主机
 
 1. 在电脑 A、电脑 B 上分别安装、配置和启动 Pocket，并分别登录各自的 Codex。
-2. 为每台主机配置各自的 Tailscale HTTPS 地址和 `POCKET_ORIGIN`。
+2. 为每台主机分别创建 Cloudflare 隧道和子域名，例如 `home-pocket.example.com` 与 `work-pocket.example.com`。在各自的 `.env` 设置对应的 `POCKET_ORIGIN`。
 3. 手机网页点击顶部主机名称，进入“切换主机”。
 4. 填写另一台主机的名称、HTTPS 地址，点击“添加主机”，再点击该主机进入。
 5. 首次访问它时，输入它自己的固定密码并勾选“记住此设备”。之后在有效期内切回来可直接进入。
@@ -271,14 +335,15 @@ bash scripts/setup-tailscale.sh
 
 | 变量 | 默认值 / 作用 |
 | --- | --- |
-| `POCKET_HOST` | `127.0.0.1`，监听地址；通过 Tailscale Serve 访问时保持此值即可 |
-| `POCKET_PORT` | `4310`；更改时同步修改 Serve 的转发端口 |
+| `POCKET_HOST` | `127.0.0.1`，仅本机回环；Cloudflare Tunnel 运行在同一主机时使用此值 |
+| `POCKET_PORT` | `4310`；更改端口时同步更新 Cloudflare 路由的 Service URL |
 | `POCKET_NAME` | 系统主机名；可改成容易辨认的名称 |
 | `POCKET_ORIGIN` | 本地使用时不设置；远程使用时填准确的 HTTPS 来源 |
 | `POCKET_ROOTS` | 默认全部目录（Linux 为 `/`）；可用英文分号分隔的绝对路径列表限制范围 |
 | `POCKET_DATA_DIR` | `~/.local/share/codex-pocket`，存放 SQLite 等应用数据 |
 | `POCKET_AUTH_FILE` | 默认 `POCKET_DATA_DIR/auth.json`；保存密码哈希，建议使用仓库外绝对路径 |
 | `CODEX_BIN` | 从 `PATH` 查找 `codex`；后台运行时建议填绝对路径 |
+| `POCKET_DESKTOP_SOCKET` | 本机桌面同步的 Unix socket。默认 `~/.codex/ipc/ipc.sock`，设置 `CODEX_HOME` 时改用该目录下的 `ipc/ipc.sock` |
 
 用 `command -v codex` 查看当前可执行文件路径，并将结果填到 `CODEX_BIN`。目录选择会拒绝范围外路径和符号链接跳转；执行工具使用 Codex 的 `workspace-write` 沙箱与 `on-request` 审批策略，目录选择边界不替代操作系统权限控制。
 
@@ -297,7 +362,7 @@ systemctl --user enable --now codex-pocket
 ```bash
 systemctl --user status codex-pocket    # 查看状态
 journalctl --user -u codex-pocket -f    # 持续查看日志，Ctrl+C 仅退出日志查看
-systemctl --user restart codex-pocket   # 重启，会影响活跃任务
+systemctl --user restart codex-pocket   # 等 Pocket 自己执行的任务结束后再重启
 systemctl --user stop codex-pocket      # 停止服务
 systemctl --user start codex-pocket     # 再次启动
 ```
@@ -346,7 +411,10 @@ npm run build
 | 本机网页打不开 | 确认 `npm start` 或后台服务仍运行；检查终端日志和端口是否为 4310；先完成 `npm run build` |
 | `EADDRINUSE` / 端口占用 | 通常已有一个 Pocket 实例运行；使用原实例，或等任务结束后停止它，再启动另一个 |
 | 页面提示来源不允许 / 403 | 检查 `.env` 的 `POCKET_ORIGIN` 与浏览器协议、域名、端口完全一致；修改后重启；远程配置后不要再用本地 URL |
-| 手机打不开 HTTPS 地址 | 检查两端 Tailscale 连接、访问策略、主机是否休眠，以及 `tailscale serve status`；不要填写手机自己的 `127.0.0.1` |
+| 手机打不开域名 | 检查域名已激活、子域名有解析，以及浏览器使用 `https://`；`127.0.0.1` 在手机上只指手机自己 |
+| Cloudflare 显示 `1033` 或隧道离线 | 检查 `systemctl --user status codex-pocket-cloudflared` 和 `journalctl --user -u codex-pocket-cloudflared -n 50`，确认 Token 对应当前隧道、主机联网且 `7844` 出站可用 |
+| Cloudflare 显示 `502` | 确认 Pocket 正在运行，并检查路由的 Service URL 是否为 `http://127.0.0.1:4310` 或实际的本机端口 |
+| 网页能打开但实时事件掉线 | 区分网页的「连接已断开」和聊天的「桌面同步 · 已断开」，按下文检查对应链路 |
 | 密码不正确 | 确认输入的是当前主机的密码；忘记时在对应主机运行 `npm run password:set` 并重启；密码不会自动去掉首尾空格 |
 | 登录尝试过多 | 等待当前主机的 10 分钟窗口结束，避免持续重试；重启不会清除限流记录 |
 | 改密码后旧密码仍可用 | 配置只在服务启动时读取；确认配置路径一致，并在任务结束后重启 Pocket |
@@ -358,9 +426,23 @@ npm run build
 | 页面无实时更新 | 查看连接状态；主机可能仍在执行，重连后核对记录，不要反复点击发送；重启服务会影响任务 |
 | 状态是排队中 | 同一目录可能已有任务；等待前一个任务结束，或选择另一个工作目录 |
 | 语音识别不可用 | 使用 HTTPS，检查麦克风权限及浏览器语音服务网络；仍不可用就用安卓键盘语音 |
-| 字体第一次打开较慢 | 原始中文字库较大；服务不保证字体持久缓存，等待字体加载即可 |
+| 字体第一次打开较慢 | 中文字体下载量较大，页面会先用系统字体显示；后续打开通常可复用浏览器缓存 |
 | 桌面同步连接失败 | 保持桌面打开并打开目标聊天；确认同一系统用户、socket 路径、工作目录范围和桌面协议版本 |
 | 停止后仍有某个后台进程 | 停止只中断指定轮次；检查主机上是否有独立运行的后台进程 |
+
+### 排查远程连接断线或延迟
+
+在 Ubuntu 主机终端运行以下命令，将域名和 `4310` 换成实际配置。设置了 `POCKET_ORIGIN` 时，本机探测用相同域名的 `Host` 请求头。
+
+```bash
+pocket_host=pocket.example.com
+curl -fsS --max-time 10 -H "Host: $pocket_host" http://127.0.0.1:4310/api/host
+curl -fsS --max-time 10 "https://$pocket_host/api/host"
+journalctl --user -u codex-pocket-cloudflared --since '20 minutes ago'
+```
+
+- 本机响应正常、HTTPS 超时，且日志出现 Cloudflare 边缘连接断开或反复重连时，检查运行 `cloudflared` 的主机出口、代理规则和 `7844` 出站。面板安装的系统服务日志使用 `sudo journalctl -u cloudflared`。 [Cloudflare 隧道排障](https://developers.cloudflare.com/tunnel/troubleshooting/)
+- HTTPS 可访问且只有某条聊天显示「桌面同步 · 已断开」时，检查对应桌面应用和聊天是否仍打开，在 Pocket 中重新连接该聊天。连接恢复后先核对任务状态、消息和审批。
 
 ## 开发与验证
 

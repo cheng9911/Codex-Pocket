@@ -1,6 +1,6 @@
 import express from 'express';
 import { createServer } from 'node:http';
-import { resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Auth } from './auth.ts';
@@ -8,6 +8,8 @@ import { PocketError } from './store.ts';
 import { PocketService } from './service.ts';
 import type { PasswordConfig } from './password.ts';
 import type { PocketEvent } from '../../../packages/types.ts';
+
+const heartbeatInterval = 20_000;
 
 export function createHttp(
   service: PocketService,
@@ -264,9 +266,18 @@ export function createHttp(
     res.json({ ok: true });
   });
   app.use('/api', (_req, res) => res.status(404).json({ error: '接口不存在' }));
-  const staticDir = options.staticDir ?? resolve('dist/web');
+  const staticDir = resolve(options.staticDir ?? 'dist/web');
   if (existsSync(staticDir)) {
-    app.use(express.static(staticDir, { index: 'index.html' }));
+    const assetsDir = resolve(staticDir, 'assets');
+    app.use(
+      express.static(staticDir, {
+        index: 'index.html',
+        setHeaders(res, file) {
+          if (dirname(file) === assetsDir && /-[\w-]{8}\.(?:js|css|woff2?)$/.test(basename(file)))
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        },
+      }),
+    );
     app.get('/{*path}', (_req, res) => res.sendFile(resolve(staticDir, 'index.html')));
   }
   app.use(
@@ -303,7 +314,12 @@ export function createHttp(
       // selected chat; snapshot.cursor prevents stale replay overwriting metadata.
       const after = Number(new URL(req.url!, 'http://local').searchParams.get('after'));
       const replay = Number.isSafeInteger(after) && after >= 0 ? service.store.replay(after) : null;
-      send({ type: 'snapshot', data: service.snapshot(), reset: replay === null });
+      send({
+        type: 'snapshot',
+        data: service.snapshot(),
+        reset: replay === null,
+        heartbeatMs: heartbeatInterval,
+      });
       if (replay)
         for (const event of replay) if (event.type === 'entry') send({ type: 'replay', event });
       const event = (e: PocketEvent) => send({ type: 'event', event: e });
@@ -323,7 +339,8 @@ export function createHttp(
         }
         alive = false;
         ws.ping();
-      }, 20000);
+        send({ type: 'heartbeat' });
+      }, heartbeatInterval);
       ws.on('close', () => {
         clearInterval(heartbeat);
         service.store.off('event', event);
