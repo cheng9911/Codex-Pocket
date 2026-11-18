@@ -4,13 +4,7 @@ import { dirname } from 'node:path';
 
 export type PasswordConfig = { version: 1; algorithm: 'scrypt'; salt: string; hash: string };
 export function validatePassword(password: unknown): asserts password is string {
-  if (
-    typeof password !== 'string' ||
-    Array.from(password).length < 12 ||
-    Array.from(password).length > 128 ||
-    Buffer.byteLength(password) > 512
-  )
-    throw new Error('密码需要 12 至 128 个字符');
+  if (typeof password !== 'string' || password.length === 0) throw new Error('密码不能为空');
 }
 function derive(password: string, salt: string): Promise<Buffer> {
   return new Promise((resolve, reject) =>

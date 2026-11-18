@@ -10,6 +10,7 @@ import {
   makePasswordConfig,
   savePasswordConfig,
   loadPasswordConfig,
+  verifyPassword,
 } from '../apps/server/src/password.ts';
 import { Auth, digest, rememberedLifetime, temporaryLifetime } from '../apps/server/src/auth.ts';
 import { Store } from '../apps/server/src/store.ts';
@@ -29,7 +30,7 @@ test('password config uses salted hashes, owner-only atomic files and fails clos
     assert.equal((await readFile(path, 'utf8')).includes(password), false);
     assert.equal((await stat(path)).mode & 0o777, 0o600);
     assert.deepEqual(await loadPasswordConfig(path), a);
-    await assert.rejects(makePasswordConfig('short'), /12/);
+    await assert.rejects(makePasswordConfig(''), /不能为空/);
     await writeFile(path, '{}');
     await assert.rejects(loadPasswordConfig(path), /格式/);
     await savePasswordConfig(path, b);
@@ -37,6 +38,21 @@ test('password config uses salted hashes, owner-only atomic files and fails clos
     await assert.rejects(loadPasswordConfig(path), /600/);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('short and long Unicode passwords can be configured and used to log in without trimming', async () => {
+  const store = new Store(':memory:');
+  try {
+    for (const value of ['1', ' 中🙂! '.repeat(300)]) {
+      const config = await makePasswordConfig(value);
+      const auth = new Auth(store, false, config);
+      const token = await auth.login(value, 'Phone', true);
+      assert.ok(auth.session({ headers: { cookie: `${auth.cookieName}=${token}` } } as any));
+      await assert.rejects(auth.login(value + ' ', 'Phone', true), /不正确/);
+    }
+  } finally {
+    store.close();
   }
 });
 
@@ -187,6 +203,7 @@ test('password HTTP login, cookie modes, origin checks, logout and device revoca
 });
 
 test('local password setup reads stdin without logging the password or starting Codex', async () => {
+  const password = ' 测试🙂 '.repeat(300);
   const root = await mkdtemp(join(tmpdir(), 'pocket-password-cli-'));
   try {
     const path = join(root, 'auth.json');
@@ -202,7 +219,9 @@ test('local password setup reads stdin without logging the password or starting 
     const [code] = await once(child, 'close');
     assert.equal(code, 0, output);
     assert.equal(output.includes(password), false);
-    assert.ok(await loadPasswordConfig(path));
+    const config = await loadPasswordConfig(path);
+    assert.ok(config);
+    assert.equal(await verifyPassword(password, config), true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

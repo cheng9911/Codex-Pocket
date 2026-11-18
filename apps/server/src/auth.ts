@@ -99,8 +99,7 @@ export class Auth {
           bucket && bucket.until > now ? bucket.until : now + 600000,
         );
     })();
-    if (typeof password !== 'string' || !password || Buffer.byteLength(password) > 512)
-      throw new PocketError(401, '主机密码不正确');
+    if (typeof password !== 'string' || !password) throw new PocketError(401, '主机密码不正确');
     this.verifying++;
     try {
       if (!(await verifyPassword(password, this.password)))

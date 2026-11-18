@@ -630,7 +630,6 @@ function App() {
                     name="password"
                     autoComplete="current-password"
                     required
-                    maxLength={256}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={t('输入此主机密码')}

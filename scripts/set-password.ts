@@ -10,12 +10,9 @@ const directory = process.env.POCKET_DATA_DIR ?? join(homedir(), '.local', 'shar
 const path = resolve(process.env.POCKET_AUTH_FILE ?? join(directory, 'auth.json'));
 async function readPassword() {
   if (process.argv.includes('--stdin')) {
-    let bytes = 0;
     const chunks: Buffer[] = [];
     for await (const chunk of process.stdin) {
       const buffer = Buffer.from(chunk);
-      bytes += buffer.length;
-      if (bytes > 1024) throw new Error('密码输入过长');
       chunks.push(buffer);
     }
     return Buffer.concat(chunks)
@@ -33,7 +30,7 @@ async function readPassword() {
   const abort = new AbortController();
   prompt.on('SIGINT', () => abort.abort());
   try {
-    process.stdout.write('设置此主机密码（12–128 字符，输入不回显）：');
+    process.stdout.write('设置此主机密码（输入不回显）：');
     const password = await prompt.question('', { signal: abort.signal });
     process.stdout.write('\n再次输入密码：');
     const confirmation = await prompt.question('', { signal: abort.signal });
