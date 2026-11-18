@@ -171,34 +171,27 @@ POCKET_DESKTOP_SOCKET=/home/rocos/.codex/ipc/ipc.sock
 
 **手机上的 `127.0.0.1` 指向手机自己，不能用它连接电脑。** 远程路线使用 Tailscale 和主机的 HTTPS 地址。
 
-### 1. 连接 Tailscale
+### 1. 配置主机上的 Tailscale 和 HTTPS
 
-在主机和安卓手机安装 Tailscale，让两台设备加入同一个 tailnet，并确认访问策略允许手机连接主机。安装与网络说明见 [Tailscale 官方文档](https://tailscale.com/docs/installation)。
-
-手机通过 tailnet 访问 Pocket；访问 Codex 服务的网络环境由主机负责。浏览器语音识别可能另需访问浏览器自己的在线服务。
-
-### 2. 在主机开启 HTTPS 入口
-
-保持 Pocket 监听 `127.0.0.1:4310`，在主机执行：
+在 Ubuntu 等使用 systemd 的 Linux 主机上，以运行 Pocket 的普通用户进入仓库并执行：
 
 ```bash
-tailscale serve --bg http://127.0.0.1:4310
-tailscale serve status
+bash scripts/setup-tailscale.sh
 ```
 
-记下输出的真实 HTTPS 地址，例如 `https://devbox.example.ts.net`。如果提示先启用 HTTPS 或相关权限，按 Tailscale 提供的页面完成配置，再执行命令。Serve 为 tailnet 内访问提供入口，`--bg` 让入口在关闭终端后继续运行；Pocket 自身仍需单独保持运行。参见 [Serve 官方说明](https://tailscale.com/docs/features/tailscale-serve)和[后台运行示例](https://tailscale.com/docs/solutions/host-private-server-docker)。
+脚本需要 Node.js、`curl` 和 `sudo`。如果缺少 Tailscale，脚本会使用官方安装器，再引导你登录 tailnet。若终端提供启用 HTTPS 的链接，请在浏览器中完成设置，按终端提示继续。脚本会读取 `.env` 的 `POCKET_PORT`，通过 Tailscale Serve 将 HTTPS 443 转发到本机的 `127.0.0.1` 对应端口，并将实际地址写入 `POCKET_ORIGIN`。遇到已有的其他 443 转发或 Funnel 时，脚本会提示你先检查配置。 [Linux 安装文档](https://tailscale.com/docs/install/linux) · [Serve 文档](https://tailscale.com/docs/features/tailscale-serve)
 
-### 3. 配置 Pocket 的访问地址
+### 2. 重启 Pocket 并验证地址
 
-在 `.env` 中加入刚才的真实地址，仅保留协议和域名；使用非默认 HTTPS 端口时也要带上端口：
+等当前任务结束后重启 Pocket。前台运行时在原终端按 `Ctrl+C` 后重新执行 `npm start`。已安装后台服务时使用 `systemctl --user restart codex-pocket`。
 
-```dotenv
-POCKET_ORIGIN=https://devbox.example.ts.net
-```
+设置 `POCKET_ORIGIN` 后，电脑和手机都使用脚本打印的 HTTPS 地址。可以在电脑打开该地址的 `/api/host`，看到主机名称等 JSON 信息就表示 HTTPS 已转发到 Pocket。从本地地址切换至 HTTPS 地址时需要重新登录。
 
-等当前任务结束后重启 Pocket：前台运行时 `Ctrl+C` 后重新执行 `npm start`；已安装后台服务时使用 `systemctl --user restart codex-pocket`。
+### 3. 安卓加入同一个 tailnet
 
-**设置 `POCKET_ORIGIN` 后，电脑和手机都改用这个 HTTPS 地址。** 继续访问 `http://127.0.0.1:4310` 会因来源不匹配被拒绝；从本地地址切换到 HTTPS 地址，也需要在新地址重新登录。
+在安卓安装 Tailscale，使用与电脑相同的账号登录，并允许建立 VPN 连接。在 Tailscale 的设备管理页确认电脑和安卓出现在同一个 tailnet。如果使用自定义访问策略，允许手机访问主机的 TCP 443。 [安卓安装文档](https://tailscale.com/docs/install/android) · [设备管理页](https://login.tailscale.com/admin/machines)
+
+手机通过 tailnet 访问 Pocket。访问 Codex 服务的网络环境由主机负责。浏览器语音识别可能需要访问浏览器自己的在线服务。
 
 ### 4. 手机打开并登录
 
