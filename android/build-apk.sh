@@ -9,7 +9,8 @@ if [[ -z "$sdk" ]]; then
 fi
 tools="$sdk/build-tools/35.0.0"
 platform="$sdk/platforms/android-35/android.jar"
-output=${1:-"$root/artifacts/android/Codex-Pocket-0.1.0-test.apk"}
+version=$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' "$root/android/AndroidManifest.xml")
+output=${1:-"$root/artifacts/android/Codex-Pocket-$version-test.apk"}
 signing=${POCKET_ANDROID_SIGNING_DIR:-"$HOME/.local/share/codex-pocket/android-signing"}
 if [[ -n ${JAVA_HOME:-} ]]; then export PATH="$JAVA_HOME/bin:$PATH"; fi
 for tool in "$tools/aapt2" "$tools/d8" "$tools/zipalign" "$tools/apksigner"; do

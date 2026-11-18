@@ -161,25 +161,27 @@ export const english: Record<string, string> = {
   撤销: 'Revoke',
   退出此主机: 'Sign out of this host',
   '退出不会停止主机上的任务。': 'Signing out does not stop tasks on the host.',
-  '此浏览器暂不支持语音识别，请使用安卓键盘的麦克风输入。远程网页需要 HTTPS。':
-    'Speech recognition is unavailable in this browser. Use your Android keyboard microphone. Remote pages require HTTPS.',
-  '未获得麦克风权限，可在浏览器设置中允许，或使用键盘语音。':
-    'Microphone access was denied. Allow it in browser settings or use keyboard dictation.',
-  '语音服务网络不可用，请使用键盘语音。':
-    'The speech service is unreachable. Use keyboard dictation.',
-  '未能完成识别，请重试或使用键盘语音。':
-    'Speech recognition failed. Try again or use keyboard dictation.',
-  '语音识别无法启动，请使用键盘语音。':
-    'Speech recognition could not start. Use keyboard dictation.',
-  结束识别: 'Stop dictation',
-  '正在结束识别…': 'Finishing dictation…',
-  语音输入: 'Voice input',
-  '正在听…识别结果仅填入草稿': 'Listening… Speech is added to your draft only.',
-  '没有识别到文字，请重试或使用键盘语音。':
-    'No speech was recognized. Try again or use keyboard dictation.',
-  '已将临时识别结果填入草稿，请核对文字。':
-    'A partial transcript was added to your draft. Check the wording.',
-  可使用键盘语音: 'Keyboard dictation is available',
+  下一轮设置: 'Next turn settings',
+  '当前：{0}': 'Current: {0}',
+  '默认：{0}': 'Default: {0}',
+  权限: 'Access',
+  沿用当前权限: 'Current access',
+  只读: 'Read only',
+  工作区写入: 'Workspace write',
+  思考强度: 'Reasoning effort',
+  默认: 'Default',
+  无: 'None',
+  最少: 'Minimal',
+  低: 'Low',
+  中: 'Medium',
+  高: 'High',
+  极高: 'Extra high',
+  'Full Access 允许 Codex 在主机用户权限内访问文件和网络。':
+    'Full Access allows Codex to access files and the network within the host user’s permissions.',
+  本轮设置无效: 'Invalid turn settings.',
+  '模型不可用，请选择可用模型': 'This model is unavailable. Select a model from the list.',
+  所选模型不支持此思考强度: 'The selected model does not support this reasoning effort.',
+  追加指令沿用当前轮次设置: 'Follow-up instructions use the current turn settings.',
   '草稿已保存在此浏览器，未发送到主机。':
     'Draft saved in this browser. It has not been sent to the host.',
   '离线消息已保存为未发送，恢复连接后请确认发送。':

@@ -947,6 +947,7 @@ function App() {
                   chat={chat}
                   ready={!!snapshot?.ready}
                   connected={connection === '实时连接'}
+                  models={snapshot?.models}
                   queue={(snapshot?.queue ?? []).filter((r) => r.chatId === chat.id)}
                   onError={setError}
                   onStop={stop}

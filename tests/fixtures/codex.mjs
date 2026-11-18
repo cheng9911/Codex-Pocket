@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 const chats = new Map(),
   approvals = new Map();
 const histories = new Map(),
-  calls = [];
+  calls = [],
+  starts = [];
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\n');
 const event = (method, params) => send({ method, params });
 function finish(threadId, turnId, status = 'completed', text = 'POCKET_OK') {
@@ -42,7 +43,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     return;
   }
   if (m.method === 'test/stats') {
-    send({ id: m.id, result: { calls } });
+    send({ id: m.id, result: { calls, starts } });
     return;
   }
   if (m.method === 'thread/list') {
@@ -119,7 +120,15 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   if (m.method === 'model/list') {
     send({
       id: m.id,
-      result: { data: [{ id: 'fixture-model', displayName: 'Fixture model' }], nextCursor: null },
+      result: {
+        data: [
+          { id: 'fixture-model', displayName: 'Fixture model', isDefault: true, defaultReasoningEffort: 'low',
+            supportedReasoningEfforts: [{ reasoningEffort: 'low' }] },
+          { id: 'fixture-alt-id', model: 'fixture-alt', displayName: 'Alternate model', defaultReasoningEffort: 'medium',
+            supportedReasoningEfforts: [{ reasoningEffort: 'medium' }, { reasoningEffort: 'high' }] },
+        ],
+        nextCursor: null,
+      },
     });
     return;
   }
@@ -181,6 +190,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     return;
   }
   if (m.method === 'turn/start') {
+    starts.push(p);
     const c = chats.get(p.threadId);
     const turnId = randomUUID();
     c.turnId = turnId;

@@ -55,7 +55,6 @@ public final class MainActivity extends Activity {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setUserAgentString(settings.getUserAgentString() + " CodexPocketAndroid/1.0");
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, false);

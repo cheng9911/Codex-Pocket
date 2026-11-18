@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="pocket_background">#101110</color>
+    <color name="pocket_launcher_background">#122019</color>
     <color name="pocket_accent">#C4DAC8</color>
     <style name="PocketTheme" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/pocket_background</item>

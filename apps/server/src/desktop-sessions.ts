@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { Chat, Entry, PendingRequest } from '../../../packages/types.ts';
+import type { Chat, Entry, PendingRequest, TurnSettings } from '../../../packages/types.ts';
+import { activeAccess } from './turn-settings.ts';
 import { DesktopBridge, desktopTurns } from './desktop-bridge.ts';
 import { historyEntry } from './local-chats.ts';
 import { PocketError, Store } from './store.ts';
@@ -120,6 +121,11 @@ export class DesktopSessions {
     }
     const turns = desktopTurns(s),
       last = turns.at(-1);
+    const model = s.latestThreadSettings?.model || s.latestModel || last?.params?.model || c.model;
+    const effort = s.latestThreadSettings?.effort ?? s.latestReasoningEffort ?? last?.params?.effort ?? null;
+    const access = activeAccess(
+      s.latestThreadSettings?.sandboxPolicy ?? s.currentPermissions?.sandboxPolicy ?? last?.params?.sandboxPolicy,
+    );
     this.store.batch(() => {
       for (const turn of turns)
         for (const [index, raw] of (turn.items ?? []).entries()) {
@@ -215,6 +221,9 @@ export class DesktopSessions {
       if (
         status !== c.status ||
         c.turnId !== (running ? (last?.turnId ?? null) : null) ||
+        c.model !== model ||
+        (c.effort ?? null) !== effort ||
+        (c.access ?? null) !== access ||
         !c.desktopConnected ||
         c.error
       )
@@ -222,6 +231,9 @@ export class DesktopSessions {
           status,
           turnId: running ? (last?.turnId ?? null) : null,
           desktopConnected: true,
+          model,
+          effort,
+          access,
           error: unsupported
             ? '请在桌面端处理请求：' + unsupported
             : (last?.error?.message ?? null),
@@ -252,9 +264,9 @@ export class DesktopSessions {
     this.sync(c.nativeId);
     return this.store.chat(c.id);
   }
-  async send(c: Chat, text: string, operationId: string, expectedTurnId?: string) {
+  async send(c: Chat, text: string, operationId: string, expectedTurnId?: string, settings?: TurnSettings) {
     await this.refresh(c);
-    return this.bridge.send(c.nativeId!, text, operationId, expectedTurnId);
+    return this.bridge.send(c.nativeId!, text, operationId, expectedTurnId, settings);
   }
   async stop(c: Chat) {
     await this.refresh(c);

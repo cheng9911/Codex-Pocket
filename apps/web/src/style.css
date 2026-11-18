@@ -1452,30 +1452,6 @@ h1 {
 .delivery-row .stop-button {
   flex: none;
 }
-.speech-input {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 7px;
-  flex: 1;
-}
-.voice-button {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  padding: 0 6px;
-  flex: none;
-}
-.voice-button.listening {
-  color: var(--warning);
-}
-.voice-status {
-  font-size: 11px;
-  line-height: 1.7;
-  color: var(--muted);
-  max-width: 300px;
-}
 .composer-toolbar {
   gap: 8px;
   align-items: flex-start;
@@ -1594,13 +1570,6 @@ h1 {
   .composer-toolbar {
     flex-wrap: wrap;
     align-items: center;
-  }
-  .speech-input {
-    flex-wrap: wrap;
-  }
-  .voice-status {
-    flex-basis: 100%;
-    padding: 0 5px 7px;
   }
   .delivery-row label {
     max-width: 230px;
@@ -2069,13 +2038,37 @@ h1 {
 }
 .composer .composer-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 5px;
   padding-top: 5px;
 }
-.composer .composer-toolbar.keyboard-dictation {
-  grid-template-columns: minmax(0, 1fr) auto;
+.turn-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 8px;
+  margin: 0 0 7px;
+}
+.turn-settings label {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.turn-settings select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  margin: 0;
+  padding: 5px;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+.turn-settings small {
+  grid-column: 1 / -1;
+  color: var(--warning);
 }
 .composer-toolbar .delivery-row {
   display: flex;
@@ -2089,21 +2082,10 @@ h1 {
 .delivery-row select {
   text-overflow: ellipsis;
 }
-.composer-toolbar .voice-button {
-  width: 44px;
-  min-height: 44px;
-  justify-content: center;
-}
-.composer-toolbar .speech-input {
-  display: block;
-}
-.composer-toolbar .voice-status {
-  grid-row: 2;
-  grid-column: 1 / -1;
-  overflow-wrap: anywhere;
-  padding: 0;
-}
 @media (max-width: 760px) {
+  .turn-settings select {
+    min-height: 44px;
+  }
   .sidebar {
     padding-top: max(14px, env(safe-area-inset-top));
   }

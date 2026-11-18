@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { DesktopIpc } from './desktop-ipc.ts';
+import type { TurnSettings } from '../../../packages/types.ts';
+import { turnOverrides } from './turn-settings.ts';
 
 export function desktopTurns(state: any): any[] {
   const h = state?.turnHistory?.kind === 'canonical' ? state.turnHistory.history : null;
@@ -179,6 +181,7 @@ export class DesktopBridge extends EventEmitter {
     text: string,
     operationId: string = randomUUID(),
     expectedTurnId?: string,
+    settings?: TurnSettings,
   ) {
     const state = await this.refresh(id),
       f = this.followed.get(id)!;
@@ -213,7 +216,15 @@ export class DesktopBridge extends EventEmitter {
         'thread-follower-start-turn',
         {
           conversationId: id,
-          turnStart: { request: { threadId: id, input, clientUserMessageId: operationId } },
+          turnStart: {
+            request: {
+              threadId: id,
+              input,
+              clientUserMessageId: operationId,
+              ...turnOverrides(settings, state.cwd),
+            },
+            ...(settings?.model || settings?.effort ? { context: { inheritThreadSettings: false } } : {}),
+          },
         },
         f.owner,
       )

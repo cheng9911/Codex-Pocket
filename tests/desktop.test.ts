@@ -145,6 +145,30 @@ test('desktop patches preserve array order and reject prototype/path corruption'
   assert.equal(({} as any).polluted, undefined);
 });
 
+test('desktop sends requested settings to the existing owner in the next turn', async () => {
+  const env = await setup();
+  const desktop = await fixture(env.root);
+  const bridge = new DesktopBridge();
+  try {
+    await bridge.ipc.open(desktop.path);
+    bridge.connected = true;
+    await bridge.attach(desktop.state.id);
+    await bridge.send(desktop.state.id, 'next turn', randomUUID(), undefined, {
+      model: 'fixture-alt', effort: 'high', access: 'full-access',
+    });
+    const { request, context } = desktop.calls.find((call) => call.method === 'thread-follower-start-turn').params.turnStart;
+    assert.equal(request.threadId, desktop.state.id);
+    assert.equal(request.model, 'fixture-alt');
+    assert.equal(request.effort, 'high');
+    assert.deepEqual(request.sandboxPolicy, { type: 'dangerFullAccess' });
+    assert.deepEqual(context, { inheritThreadSettings: false });
+  } finally {
+    bridge.close();
+    await desktop.close();
+    await env.close();
+  }
+});
+
 test('desktop framing, owner isolation, revision resync and incompatible protocol fail closed', async () => {
   const e = await setup(),
     f = await fixture(e.root),

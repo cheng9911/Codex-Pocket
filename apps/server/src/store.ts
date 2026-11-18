@@ -30,10 +30,13 @@ export class Store extends EventEmitter {
       CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY,body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT,type TEXT NOT NULL,chat_id TEXT,data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,status TEXT NOT NULL,result TEXT,error TEXT);
-      CREATE TABLE IF NOT EXISTS queue(position INTEGER PRIMARY KEY AUTOINCREMENT,operation_id TEXT UNIQUE NOT NULL,chat_id TEXT NOT NULL,text TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS queue(position INTEGER PRIMARY KEY AUTOINCREMENT,operation_id TEXT UNIQUE NOT NULL,chat_id TEXT NOT NULL,text TEXT NOT NULL,settings TEXT);
       CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,label TEXT NOT NULL,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS pairing(hash TEXT PRIMARY KEY,expires_at INTEGER NOT NULL);
     `);
+    const queueColumns = this.db.prepare('PRAGMA table_info(queue)').all() as { name: string }[];
+    if (!queueColumns.some(({ name }) => name === 'settings'))
+      this.db.exec('ALTER TABLE queue ADD COLUMN settings TEXT');
     if (!this.meta('hostId')) this.setMeta('hostId', randomUUID());
   }
   meta(key: string) {

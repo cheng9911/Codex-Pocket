@@ -9,6 +9,21 @@ export type ChatStatus =
   | 'completed'
   | 'failed'
   | 'interrupted';
+export const accessModes = ['read-only', 'workspace-write', 'full-access'] as const;
+export type AccessMode = (typeof accessModes)[number];
+export interface TurnSettings {
+  model?: string;
+  effort?: string;
+  access?: AccessMode;
+}
+export interface ModelOption {
+  id: string;
+  model: string;
+  name: string;
+  efforts: string[];
+  defaultEffort: string | null;
+  isDefault: boolean;
+}
 export interface Chat {
   id: string;
   nativeId?: string;
@@ -22,6 +37,8 @@ export interface Chat {
   pinned?: boolean;
   cwd: string;
   model: string | null;
+  effort?: string | null;
+  access?: AccessMode | null;
   status: ChatStatus;
   turnId: string | null;
   createdAt: number;
@@ -69,6 +86,7 @@ export interface Snapshot {
   queue: QueuedMessage[];
   favorites: string[];
   usage: AccountUsage;
+  models?: ModelOption[];
 }
 export type Delivery = 'queue' | 'steer';
 export interface QueuedMessage {

@@ -15,10 +15,13 @@ import type {
   Delivery,
   QueuedMessage,
   AccountUsage,
+  ModelOption,
+  TurnSettings,
 } from '../../../packages/types.ts';
 import { Store, PocketError } from './store.ts';
 import { LocalChats, nativeEntryId } from './local-chats.ts';
 import { DesktopSessions } from './desktop-sessions.ts';
+import { activeAccess, modelCatalog, resolveTurnSettings, turnOverrides } from './turn-settings.ts';
 
 export interface AgentTransport {
   request<T = WireParams>(method: string, params?: unknown): Promise<T>;
@@ -35,7 +38,7 @@ export class PocketService {
   ready = false;
   error: string | null = null;
   roots: string[] = [];
-  models: Array<{ id: string; name: string }> = [];
+  models: ModelOption[] = [];
   usage: AccountUsage = {
     accountType: null,
     plan: null,
@@ -128,10 +131,7 @@ export class PocketService {
       });
       await this.transport.notify('initialized');
       const result = await this.transport.request('model/list', { limit: 100 });
-      this.models = (result.data ?? []).map((m: any) => ({
-        id: m.id,
-        name: m.displayName ?? m.id,
-      }));
+      this.models = modelCatalog(result.data);
       this.ready = true;
       this.error = null;
       this.store.emit('status');
@@ -148,6 +148,7 @@ export class PocketService {
       chats: this.store.chats(),
       requests: this.store.requests().filter((r) => r.status === 'pending'),
       cursor: this.store.cursor(),
+      models: this.models,
       ready:
         this.ready || this.store.chats().some((c) => c.control === 'desktop' && c.desktopConnected),
       error: this.error,
@@ -312,10 +313,11 @@ export class PocketService {
   async create(title: string, cwd: string, model: string | null) {
     const agent = this.agent();
     const path = await this.directory(cwd);
-    if (model && !this.models.some((m) => m.id === model)) throw new PocketError(400, '模型不可用');
+    const selected = model ? this.models.find((m) => m.id === model || m.model === model) : undefined;
+    if (model && !selected) throw new PocketError(400, '模型不可用');
     const result = await agent.request('thread/start', {
       cwd: path,
-      model: model || undefined,
+      model: selected?.model,
       approvalPolicy: 'on-request',
       sandbox: 'workspace-write',
     });
@@ -326,7 +328,9 @@ export class PocketService {
       nativeId: result.thread.id,
       title: title.trim().slice(0, 120) || '新聊天',
       cwd: path,
-      model,
+      model: result.model ?? selected?.model ?? null,
+      effort: result.reasoningEffort ?? result.reasoning_effort ?? null,
+      access: 'workspace-write',
       status: 'idle',
       turnId: null,
       createdAt: now,
@@ -373,6 +377,8 @@ export class PocketService {
         turnId: null,
         error: null,
         model: result.model ?? chat.model,
+        effort: result.reasoningEffort ?? result.reasoning_effort ?? null,
+        access: 'workspace-write',
       });
     } catch (e) {
       if (/active writer|already.*loaded|already.*running/i.test(errorText(e)))
@@ -429,13 +435,18 @@ export class PocketService {
   }
   private async load(chat: Chat) {
     if (!this.loaded.has(chat.id)) {
+      const options = {
+        cwd: chat.cwd,
+        model: chat.model ?? undefined,
+        config: chat.effort ? { model_reasoning_effort: chat.effort } : undefined,
+        approvalPolicy: 'on-request',
+        sandbox: chat.access === 'full-access' ? 'danger-full-access' : chat.access ?? 'workspace-write',
+      };
       try {
         await this.agent().request('thread/resume', {
           threadId: chat.nativeId ?? chat.id,
           excludeTurns: true,
-          cwd: chat.cwd,
-          approvalPolicy: 'on-request',
-          sandbox: 'workspace-write',
+          ...options,
         });
       } catch (e) {
         const durable = this.store.db
@@ -446,12 +457,7 @@ export class PocketService {
         // Codex does not persist an empty native thread before its first turn.
         // Recreate only a genuinely unused thread, preserving our app chat ID.
         if (durable.n || !errorText(e).includes('no rollout found')) throw e;
-        const result = await this.agent().request('thread/start', {
-          cwd: chat.cwd,
-          model: chat.model ?? undefined,
-          approvalPolicy: 'on-request',
-          sandbox: 'workspace-write',
-        });
+        const result = await this.agent().request('thread/start', options);
         if (typeof result.thread?.id !== 'string') throw new Error('空聊天恢复失败');
         this.store.patchChat(chat.id, { nativeId: result.thread.id });
       }
@@ -464,6 +470,7 @@ export class PocketService {
     operationId: string,
     delivery: Delivery = 'queue',
     expectedTurnId?: string,
+    settings?: TurnSettings,
   ) {
     let chat = this.store.chat(id);
     if (chat.control === 'desktop') chat = await this.desktop.refresh(chat);
@@ -479,6 +486,9 @@ export class PocketService {
       throw new PocketError(409, '当前没有可追加指令的任务，请改为发送新任务');
     if (delivery === 'steer' && expectedTurnId !== undefined && expectedTurnId !== chat.turnId)
       throw new PocketError(409, '执行轮次已经改变，请确认当前任务后再补充指令');
+    if (delivery === 'steer' && settings)
+      throw new PocketError(400, '追加指令沿用当前轮次设置');
+    const overrides = resolveTurnSettings(settings, chat.model, this.models);
     const entry: Entry = {
       id: `user:${operationId}`,
       chatId: id,
@@ -512,8 +522,8 @@ export class PocketService {
       this.store.putEntry(entry);
       // Persist the visible message, queue and metadata together before publishing.
       this.store.db
-        .prepare('INSERT INTO queue(operation_id,chat_id,text) VALUES(?,?,?)')
-        .run(operationId, id, text);
+        .prepare('INSERT INTO queue(operation_id,chat_id,text,settings) VALUES(?,?,?,?)')
+        .run(operationId, id, text, overrides ? JSON.stringify(overrides) : null);
       if (!active(chat)) this.store.patchChat(id, { status: 'queued', error: null });
       this.store.publish('queue', this.queued());
     });
@@ -545,16 +555,22 @@ export class PocketService {
         try {
           await this.directory(chat.cwd);
           if (chat.control !== 'desktop') await this.load(chat);
+          const settings: TurnSettings | undefined = row.settings ? JSON.parse(row.settings) : undefined;
           const result =
             chat.control === 'desktop'
-              ? await this.desktop.send(chat, row.text, row.operation_id)
+              ? await this.desktop.send(chat, row.text, row.operation_id, undefined, settings)
               : await this.agent().request('turn/start', {
                   threadId: this.store.chat(chat.id).nativeId ?? chat.id,
                   input: [{ type: 'text', text: row.text, text_elements: [] }],
+                  ...turnOverrides(settings, chat.cwd),
                 });
           if (typeof result.turn?.id !== 'string') throw new Error('Codex 没有返回执行标识');
           const current = this.store.chat(chat.id);
-          if (active(current)) this.store.patchChat(chat.id, { turnId: result.turn.id });
+          if (active(current) || (settings && chat.control !== 'desktop'))
+            this.store.patchChat(chat.id, {
+              ...(active(current) ? { turnId: result.turn.id } : {}),
+              ...(settings && chat.control !== 'desktop' ? settings : {}),
+            });
           const entry = this.store.entry(`user:${row.operation_id}`)!;
           this.store.putEntry({ ...entry, turnId: result.turn.id, status: 'sent' });
         } catch (e) {
@@ -754,7 +770,14 @@ export class PocketService {
     const chat = this.store.chats().find((c) => (c.nativeId ?? c.id) === p.threadId);
     if (!chat || (chat.source === 'codex' && chat.control !== 'pocket')) return;
     const chatId = chat.id;
-    if (method === 'turn/started')
+    if (method === 'thread/settings/updated' && p.threadSettings) {
+      const { model, effort, sandboxPolicy } = p.threadSettings;
+      this.store.patchChat(chatId, {
+        model: typeof model === 'string' ? model : chat.model,
+        effort: typeof effort === 'string' ? effort : null,
+        access: activeAccess(sandboxPolicy),
+      });
+    } else if (method === 'turn/started')
       this.store.patchChat(chatId, { turnId: p.turn.id, status: 'running', error: null });
     else if (method === 'turn/completed') {
       this.flushDeltas();

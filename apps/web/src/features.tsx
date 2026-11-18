@@ -1,20 +1,36 @@
-import { t, getLocale, speechLocale } from './i18n.ts';
+import { t, getLocale } from './i18n.ts';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Check, Clock, FileText, Mic, Pin, Square, X } from 'lucide-react';
+import { ArrowUp, Check, Clock, FileText, Pin, Square, X } from 'lucide-react';
 import type {
   AccountUsage,
   Chat,
   Delivery,
   HostInfo,
+  ModelOption,
   QueuedMessage,
   Snapshot,
+  TurnSettings,
 } from '../../../packages/types.ts';
+
+const accessNames = {
+  'read-only': '只读',
+  'workspace-write': '工作区写入',
+  'full-access': 'Full Access',
+};
+const effortNames: Record<string, string> = {
+  none: '无',
+  minimal: '最少',
+  low: '低',
+  medium: '中',
+  high: '高',
+  xhigh: '极高',
+  max: 'Max',
+  ultra: 'Ultra',
+};
 import { api, ApiError, operation } from './api.ts';
-import { captureSpeech, type Recognition } from './speech.ts';
 
 type Draft = { text: string; unsent: boolean; uncertain: boolean };
 const emptyDraft = (): Draft => ({ text: '', unsent: false, uncertain: false });
-const keyboardDictationOnly = /\bCodexPocketAndroid\//.test(navigator.userAgent);
 function loadDraft(key: string): Draft {
   try {
     const value = JSON.parse(localStorage.getItem(key) ?? 'null');
@@ -23,99 +39,12 @@ function loadDraft(key: string): Draft {
   } catch {}
   return emptyDraft();
 }
-function SpeechInput({ onText, disabled }: { onText: (text: string) => void; disabled: boolean }) {
-  const [phase, setPhase] = useState<'idle' | 'listening' | 'stopping'>('idle'),
-    [message, setMessage] = useState(''),
-    [interim, setInterim] = useState('');
-  const recognition = useRef<ReturnType<typeof captureSpeech> | null>(null),
-    callback = useRef(onText);
-  callback.current = onText;
-  const browser = window as Window & {
-    SpeechRecognition?: new () => Recognition;
-    webkitSpeechRecognition?: new () => Recognition;
-  };
-  const Constructor = browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
-  useEffect(() => () => recognition.current?.cancel(), []);
-  useEffect(() => {
-    if (!disabled || !recognition.current) return;
-    recognition.current.cancel();
-    recognition.current = null;
-    setPhase('idle');
-    setInterim('');
-  }, [disabled]);
-  function toggle() {
-    if (recognition.current) {
-      setPhase('stopping');
-      recognition.current.stop();
-      return;
-    }
-    if (!Constructor || !window.isSecureContext) {
-      setMessage('此浏览器暂不支持语音识别，请使用安卓键盘的麦克风输入。远程网页需要 HTTPS。');
-      return;
-    }
-    try {
-      const session = captureSpeech(new Constructor(), speechLocale(), {
-        preview: setInterim,
-        completed({ text, usedInterim, error }) {
-          recognition.current = null;
-          setPhase('idle');
-          setInterim('');
-          if (text) {
-            callback.current(text);
-            if (usedInterim) setMessage('已将临时识别结果填入草稿，请核对文字。');
-          } else if (error === 'not-allowed' || error === 'service-not-allowed') {
-            setMessage('未获得麦克风权限，可在浏览器设置中允许，或使用键盘语音。');
-          } else if (error === 'network') {
-            setMessage('语音服务网络不可用，请使用键盘语音。');
-          } else if (error === 'start-failed') {
-            setMessage('语音识别无法启动，请使用键盘语音。');
-          } else if (error && error !== 'no-speech') {
-            setMessage('未能完成识别，请重试或使用键盘语音。');
-          } else {
-            setMessage('没有识别到文字，请重试或使用键盘语音。');
-          }
-        },
-      });
-      recognition.current = session;
-      setPhase('listening');
-      setMessage('');
-      session.start();
-    } catch {
-      setMessage('语音识别无法启动，请使用键盘语音。');
-    }
-  }
-  const active = phase !== 'idle';
-  const label = phase === 'stopping' ? '正在结束识别…' : active ? '结束识别' : '语音输入';
-  return (
-    <>
-      <div className="speech-input">
-        <button
-          type="button"
-          className={'voice-button ' + (active ? 'listening' : '')}
-          title={t(label)}
-          onClick={toggle}
-          disabled={disabled || phase === 'stopping'}
-          aria-pressed={active}
-        >
-          {active ? <Square size={14} /> : <Mic size={15} />}
-          <span className="sr-only">{t(label)}</span>
-        </button>
-      </div>
-      {(active || message || !Constructor) && (
-        <span className="voice-status" role="status">
-          {phase === 'stopping'
-            ? t(label)
-            : t(message) || interim || t(Constructor ? '正在听…识别结果仅填入草稿' : '可使用键盘语音')}
-        </span>
-      )}
-    </>
-  );
-}
 export function MessageComposer({
   host,
   chat,
   ready,
   connected,
+  models,
   queue,
   onError,
   onStop,
@@ -125,6 +54,7 @@ export function MessageComposer({
   chat: Chat;
   ready: boolean;
   connected: boolean;
+  models?: ModelOption[];
   queue: QueuedMessage[];
   onError: (error: string) => void;
   onStop: () => Promise<void>;
@@ -135,9 +65,16 @@ export function MessageComposer({
     [intent, setIntent] = useState<Delivery | 'draft'>('queue'),
     [sending, setSending] = useState(false),
     [note, setNote] = useState(''),
-    [confirmed, setConfirmed] = useState(false);
+    [confirmed, setConfirmed] = useState(false),
+    [turnSettings, setTurnSettings] = useState<TurnSettings>({});
   const active = ['running', 'waiting_approval', 'waiting_input', 'stopping'].includes(chat.status);
   const canSteer = active && !!chat.turnId && chat.status !== 'stopping';
+  const selection: TurnSettings = intent === 'steer' ? {} : turnSettings;
+  const currentAccess = chat.access ?? (chat.control === 'desktop' ? null : 'workspace-write');
+  const currentModel = models?.find((m) => m.id === chat.model || m.model === chat.model) ??
+    (chat.model ? undefined : models?.find((m) => m.isDefault));
+  const selectedModel = selection.model ? models?.find((m) => m.id === selection.model) : currentModel;
+  const currentEffort = (selection.model ? undefined : chat.effort) ?? selectedModel?.defaultEffort;
   // Persist synchronously before network I/O as well as on edits: closing the page
   // while a send is in flight must not turn an uncertain operation into a clean draft.
   const currentDraft = useRef(draft);
@@ -178,6 +115,7 @@ export function MessageComposer({
         operationId: operation(),
         delivery: intent,
         expectedTurnId: intent === 'steer' ? chat.turnId : undefined,
+        settings: intent === 'queue' && Object.values(selection).some(Boolean) ? selection : undefined,
       });
       update(emptyDraft());
       setConfirmed(false);
@@ -216,6 +154,46 @@ export function MessageComposer({
         </details>
       )}
       <form className="composer" onSubmit={send}>
+        {models && (
+          <div className="turn-settings" role="group" aria-label={t('下一轮设置')}>
+            <label>
+              <span>{t('权限')}</span>
+              <select
+                value={selection.access ?? ''}
+                onChange={(e) => setTurnSettings({ ...turnSettings, access: (e.target.value || undefined) as TurnSettings['access'] })}
+                disabled={sending || intent === 'steer'}
+              >
+                <option value="">{currentAccess ? t('当前：{0}', { 0: t(accessNames[currentAccess]) }) : t('沿用当前权限')}</option>
+                {Object.entries(accessNames).map(([value, name]) => <option key={value} value={value}>{t(name)}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>{t('模型')}</span>
+              <select
+                value={selection.model ?? ''}
+                onChange={(e) => setTurnSettings({ ...turnSettings, model: e.target.value || undefined, effort: undefined })}
+                disabled={sending || intent === 'steer' || !models.length}
+              >
+                <option value="">{t('当前：{0}', { 0: currentModel?.name ?? chat.model ?? t('使用 Codex 默认模型') })}</option>
+                {models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>{t('思考强度')}</span>
+              <select
+                value={selection.effort ?? ''}
+                onChange={(e) => setTurnSettings({ ...turnSettings, effort: e.target.value || undefined })}
+                disabled={sending || intent === 'steer' || !selectedModel?.efforts.length}
+              >
+                <option value="">{currentEffort ? t(selection.model ? '默认：{0}' : '当前：{0}', { 0: t(effortNames[currentEffort] ?? currentEffort) }) : t('默认')}</option>
+                {selectedModel?.efforts.map((effort) => (
+                  <option key={effort} value={effort}>{t(effortNames[effort] ?? effort)}</option>
+                ))}
+              </select>
+            </label>
+            {selection.access === 'full-access' && <small>{t('Full Access 允许 Codex 在主机用户权限内访问文件和网络。')}</small>}
+          </div>
+        )}
         <label className="sr-only" htmlFor="message">
           {t('发送给 Codex')}
         </label>
@@ -256,7 +234,7 @@ export function MessageComposer({
             )}
           </div>
         )}
-        <div className={'composer-toolbar' + (keyboardDictationOnly ? ' keyboard-dictation' : '')}>
+        <div className="composer-toolbar">
           <div className="delivery-row">
             <label>
               <span className="sr-only">{t('消息发送方式')}</span>
@@ -288,18 +266,6 @@ export function MessageComposer({
             )}
           </div>
 
-          {!keyboardDictationOnly && (
-            <SpeechInput
-              disabled={sending}
-              onText={(text) =>
-                update((d) => ({
-                  ...d,
-                  text: (d.text + (d.text ? ' ' : '') + text).slice(0, 30000),
-                  unsent: true,
-                }))
-              }
-            />
-          )}
           <button
             className="send-intent"
             disabled={
@@ -332,7 +298,7 @@ export function MessageComposer({
           (intent === 'draft'
             ? t('草稿只保存在此浏览器')
             : intent === 'steer'
-              ? t('追加到当前轮次，不会自动改为排队')
+              ? t('追加指令沿用当前轮次设置')
               : active
                 ? t('本轮成功完成后自动发送；停止或失败会取消排队')
                 : t(chat.control === 'desktop' ? '发送到当前桌面聊天' : '相同工作目录按顺序执行'))}

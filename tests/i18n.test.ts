@@ -4,7 +4,6 @@ import {
   getLocale,
   resolveLocale,
   setLocale,
-  speechLocale,
   translate,
 } from '../apps/web/src/i18n.ts';
 import { english } from '../apps/web/src/messages.ts';
@@ -35,14 +34,12 @@ test('translation keeps placeholders intact, interpolates literally and leaves u
   assert.equal(translate('待处理列表，{0} 项', 'zh-CN', { 0: 3 }), '待处理列表，3 项');
 });
 
-test('language switches immediately and updates speech locale even without storage', () => {
+test('language switches immediately even without storage', () => {
   const original = getLocale();
   try {
     setLocale('en');
     assert.equal(getLocale(), 'en');
-    assert.equal(speechLocale(), 'en-US');
     setLocale('zh-CN');
-    assert.equal(speechLocale(), 'zh-CN');
   } finally {
     setLocale(original);
   }

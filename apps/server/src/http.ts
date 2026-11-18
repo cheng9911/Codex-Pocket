@@ -8,6 +8,7 @@ import { PocketError } from './store.ts';
 import { PocketService } from './service.ts';
 import type { PasswordConfig } from './password.ts';
 import type { PocketEvent } from '../../../packages/types.ts';
+import { parseTurnSettings } from './turn-settings.ts';
 
 const heartbeatInterval = 20_000;
 
@@ -203,12 +204,13 @@ export function createHttp(
     if (!['queue', 'steer'].includes(delivery)) throw new PocketError(400, '请选择有效的发送方式');
     if (delivery === 'steer' && typeof expectedTurnId !== 'string')
       throw new PocketError(400, '追加指令需要当前执行轮次标识');
+    const settings = parseTurnSettings(req.body.settings);
     const id = req.params.id;
     res.json(
       await service.operation(
         String(operationId),
-        { type: 'message', id, text, delivery, expectedTurnId },
-        () => service.message(id, text.trim(), String(operationId), delivery, expectedTurnId),
+        { type: 'message', id, text, delivery, expectedTurnId, settings },
+        () => service.message(id, text.trim(), String(operationId), delivery, expectedTurnId, settings),
       ),
     );
   });

@@ -17,7 +17,6 @@ function initialLocale(): Locale {
 }
 let locale = initialLocale();
 export const getLocale = () => locale;
-export const speechLocale = () => (locale === 'en' ? 'en-US' : 'zh-CN');
 function publish(next: Locale) {
   locale = next;
   if (typeof document !== 'undefined') document.documentElement.lang = next;
