@@ -6,17 +6,18 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { Auth } from './auth.ts';
 import { PocketError } from './store.ts';
 import { PocketService } from './service.ts';
+import type { PasswordConfig } from './password.ts';
 import type { PocketEvent } from '../../../packages/types.ts';
 
 export function createHttp(
   service: PocketService,
-  options: { origin?: string; staticDir?: string } = {},
+  options: { origin?: string; staticDir?: string; password?: PasswordConfig } = {},
 ) {
   const app = express();
   const http = createServer(app);
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
   const origin = options.origin ? new URL(options.origin).origin : undefined;
-  const auth = new Auth(service.store, origin?.startsWith('https:') ?? false);
+  const auth = new Auth(service.store, origin?.startsWith('https:') ?? false, options.password);
   const allowed = (req: import('node:http').IncomingMessage) => {
     if (!req.headers.host) return false;
     if (origin) {
@@ -54,7 +55,22 @@ export function createHttp(
     }
     next();
   });
-  app.get('/api/host', (_req, res) => res.json(service.host));
+  app.get('/api/host', (_req, res) =>
+    res.json({ ...service.host, authMode: auth.passwordEnabled ? 'password' : 'pairing' }),
+  );
+  app.post('/api/login', async (req, res) => {
+    const { password, label, remember } = req.body ?? {};
+    if (
+      typeof label !== 'string' ||
+      !label.trim() ||
+      label.length > 80 ||
+      typeof remember !== 'boolean'
+    )
+      throw new PocketError(400, '请填写设备名称并选择登录方式');
+    const token = await auth.login(password, label, remember);
+    auth.cookie(res, token, remember);
+    res.json({ authenticated: true });
+  });
   app.post('/api/pair', (req, res) => {
     const code = String(req.body?.code ?? '');
     const token = auth.exchange(

@@ -262,4 +262,36 @@ export const english: Record<string, string> = {
   请回答所有问题: 'Please answer all questions.',
   无效的审批决定: 'Invalid approval decision.',
   'Codex 不支持此审批范围': 'Codex does not support this approval scope.',
+  等待登录: 'Sign-in required',
+  主机登录: 'Host sign-in',
+  '输入此主机的固定密码，授权当前设备。': 'Enter this host’s password to authorize this device.',
+  '在主机运行以下命令设置固定密码，然后重启服务。':
+    'Run this command on the host to set a password, then restart the service.',
+  '尚未设置密码时，仍可运行 npm run pair 使用一次性配对码。':
+    'Until a password is set, you can still use npm run pair for a one-time pairing code.',
+  主机密码: 'Host password',
+  输入此主机密码: 'Enter this host’s password',
+  '记住此设备（30 天）': 'Remember this device (30 days)',
+  '不勾选时使用浏览器会话登录，最长 12 小时。':
+    'Without this option, sign-in lasts for the browser session, up to 12 hours.',
+  '正在登录…': 'Signing in…',
+  登录此主机: 'Sign in to host',
+  '切换主机后任务继续运行。每台主机独立登录，已授权的设备可直接进入。':
+    'Tasks keep running when you switch hosts. Sign in to each host separately; authorized devices can enter directly.',
+  '请先登录主机以管理设备。': 'Sign in to the host to manage devices.',
+  '已授权的设备可以访问此主机上的 Codex 聊天。':
+    'Authorized devices can access Codex chats on this host.',
+  授权于: 'Authorized on',
+  到期时间: 'Expires',
+  '在主机终端运行 npm run password:set 设置或修改密码，重启后旧设备需重新登录。':
+    'Run npm run password:set on the host to set or change its password. Restart the service; existing devices must sign in again.',
+  '设备授权已撤销或过期，请重新登录':
+    'Device authorization was revoked or expired. Please sign in again.',
+  主机密码不正确: 'Incorrect host password.',
+  '登录尝试过多，请十分钟后再试': 'Too many sign-in attempts. Try again in 10 minutes.',
+  '登录请求较多，请稍后再试': 'Too many sign-in requests. Please try again shortly.',
+  尚未设置主机密码: 'No host password has been set.',
+  '已启用主机密码，请使用密码登录': 'A host password is enabled. Sign in with the password.',
+  请先登录这台主机: 'Please sign in to this host first.',
+  请填写设备名称并选择登录方式: 'Enter a device name and select a sign-in mode.',
 };

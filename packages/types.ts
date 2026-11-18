@@ -47,6 +47,7 @@ export interface PendingRequest {
   createdAt: number;
 }
 export interface HostInfo {
+  authMode?: 'password' | 'pairing';
   id: string;
   name: string;
   version: string;

@@ -2460,3 +2460,23 @@ html[lang='en'] .inbox-filters button {
 html[lang='en'] .approval-context > div {
   grid-template-columns: 62px minmax(0, 1fr);
 }
+
+.pair-screen form .remember-device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.pair-screen form .remember-device input {
+  accent-color: #e8e8e8;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.password-settings {
+  margin-bottom: 20px;
+}
+.password-settings h3 {
+  font-size: 14px;
+  font-weight: 500;
+}

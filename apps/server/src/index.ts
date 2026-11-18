@@ -4,14 +4,22 @@ import { Store } from './store.ts';
 import { PocketService } from './service.ts';
 import { createHttp } from './http.ts';
 import { existsSync } from 'node:fs';
+import { loadPasswordConfig } from './password.ts';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 
 const directory = process.env.POCKET_DATA_DIR ?? join(homedir(), '.local', 'share', 'codex-pocket');
+const password = await loadPasswordConfig(
+  resolve(process.env.POCKET_AUTH_FILE ?? join(directory, 'auth.json')),
+);
 const store = new Store(join(directory, 'pocket.sqlite'));
-if (process.argv.includes('--pair')) {
+if (process.argv.includes('--pair') && password) {
+  console.error('已启用主机密码，请使用密码登录，无需生成配对码。');
+  store.close();
+  process.exitCode = 1;
+} else if (process.argv.includes('--pair')) {
   const { Auth } = await import('./auth.ts');
-  console.log('一次性配对码（10 分钟有效）：' + new Auth(store, false).pairCode());
+  console.log('一次性配对码（10 分钟有效）：' + new Auth(store, false, password).pairCode());
   store.close();
 } else {
   const service = new PocketService(store, {
@@ -19,7 +27,7 @@ if (process.argv.includes('--pair')) {
     name: process.env.POCKET_NAME ?? hostname(),
     version: '0.1.0',
   });
-  const server = createHttp(service, { origin: process.env.POCKET_ORIGIN });
+  const server = createHttp(service, { origin: process.env.POCKET_ORIGIN, password });
   const host = process.env.POCKET_HOST ?? '127.0.0.1';
   const port = Number(process.env.POCKET_PORT ?? 4310);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('无效的端口');
@@ -28,7 +36,11 @@ if (process.argv.includes('--pair')) {
     server.http.listen(port, host, resolve);
   });
   console.log(`Codex Pocket: http://${host}:${port}`);
-  console.log('首次访问运行 npm run pair 生成配对码。');
+  console.log(
+    password
+      ? '主机密码登录已启用。'
+      : '运行 npm run password:set 设置主机密码，然后重启服务。旧版配对仍可使用。',
+  );
   const roots = (process.env.POCKET_ROOTS ?? process.cwd())
     .split(';')
     .filter(Boolean)

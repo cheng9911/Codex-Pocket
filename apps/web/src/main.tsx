@@ -130,6 +130,9 @@ function App() {
     [sending, setSending] = useState(false);
   const [code, setCode] = useState(''),
     [label, setLabel] = useState(t('我的浏览器'));
+  const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(true);
+  const passwordMode = host?.authMode === 'password';
   const selectedRef = useRef(selected),
     cursor = useRef(0),
     generation = useRef(0),
@@ -275,15 +278,31 @@ function App() {
           }
         }
       };
-      ws.onclose = (e) => {
+      ws.onclose = async (e) => {
         if (stopped) return;
-        if (e.code === 4001) {
+        const expired = async () => {
           setPaired(false);
-          setError(t('设备会话已撤销或过期，请重新配对'));
+          setSnapshot(null);
+          setError('设备授权已撤销或过期，请重新登录');
+          try {
+            const h = await api<HostInfo>('/host');
+            setHost(h);
+          } catch {}
+        };
+        if (e.code === 4001) {
+          await expired();
           return;
         }
         setConnection('连接已断开');
+        // Reconnect independently: a slow auth probe must not leave the UI online
+        // or prevent recovery when the phone switches networks.
         timer = setTimeout(connect, Math.min(15000, 500 * 2 ** attempt++) + Math.random() * 300);
+        try {
+          await api('/snapshot');
+        } catch (error) {
+          if (stopped) return;
+          if ((error as { status?: number }).status === 401) await expired();
+        }
       };
       ws.onerror = () => ws.close();
     };
@@ -323,18 +342,20 @@ function App() {
     )?.focus();
     return () => previous?.focus();
   }, [panel]);
-  async function pair(e: React.FormEvent) {
+  async function authenticate(e: React.FormEvent) {
     e.preventDefault();
     setSending(true);
     setError('');
     try {
-      await api('/pair', { code: code.trim(), label });
+      if (passwordMode) await api('/login', { password, label, remember });
+      else await api('/pair', { code: code.trim(), label });
       setCode('');
       setSnapshot(await api('/snapshot'));
       setPaired(true);
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      setPassword('');
       setSending(false);
     }
   }
@@ -370,7 +391,8 @@ function App() {
   ];
   const decisions = snapshot?.requests.length ?? 0;
   const waiting = (snapshot?.requests.length ?? 0) + (snapshot?.queue?.length ?? 0);
-  const connectionText = paired === false ? t('等待配对') : t(connection);
+  const connectionText =
+    paired === false ? t(passwordMode ? '等待登录' : '等待配对') : t(connection);
   return (
     <div className={'app ' + (selected ? 'has-selection' : '')}>
       <aside className="sidebar">
@@ -546,7 +568,7 @@ function App() {
                   <span title={chat.cwd}>{chat.cwd}</span>
                 </>
               ) : (
-                <span>{paired ? t('主机工作区') : t('设备配对')}</span>
+                <span>{paired ? t('主机工作区') : t(passwordMode ? '主机登录' : '设备配对')}</span>
               )}
             </div>
           </div>
@@ -583,24 +605,46 @@ function App() {
             <div className="pair-guide">
               <Mark />
               <h2>{t('连接到你的主机')}</h2>
-              <p>{t('在主机的项目目录运行以下命令，获取一次性配对码。')}</p>
-              <div className="pair-command">
-                <Terminal size={18} />
-                <code>npm run pair</code>
-              </div>
-              <small>{t('配对码在 10 分钟内有效，只能使用一次。')}</small>
+              {passwordMode ? (
+                <>
+                  <p>{host?.name}</p>
+                  <small>{t('输入此主机的固定密码，授权当前设备。')}</small>
+                </>
+              ) : (
+                <>
+                  <p>{t('在主机运行以下命令设置固定密码，然后重启服务。')}</p>
+                  <div className="pair-command">
+                    <Terminal size={18} />
+                    <code>npm run password:set</code>
+                  </div>
+                  <small>{t('尚未设置密码时，仍可运行 npm run pair 使用一次性配对码。')}</small>
+                </>
+              )}
             </div>
-            <form onSubmit={pair}>
+            <form onSubmit={authenticate}>
               <label>
-                {t('一次性配对码')}
-                <input
-                  autoComplete="off"
-                  spellCheck={false}
-                  required
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder={t('输入主机生成的配对码')}
-                />
+                {t(passwordMode ? '主机密码' : '一次性配对码')}
+                {passwordMode ? (
+                  <input
+                    type="password"
+                    name="password"
+                    autoComplete="current-password"
+                    required
+                    maxLength={256}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={t('输入此主机密码')}
+                  />
+                ) : (
+                  <input
+                    autoComplete="off"
+                    spellCheck={false}
+                    required
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder={t('输入主机生成的配对码')}
+                  />
+                )}
               </label>
               <label>
                 {t('设备名称')}
@@ -611,8 +655,23 @@ function App() {
                   maxLength={80}
                 />
               </label>
-              <button className="primary" disabled={sending}>
-                {sending ? t('正在配对…') : t('配对并连接')}
+              {passwordMode && (
+                <>
+                  <label className="remember-device">
+                    <input
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                    />
+                    {t('记住此设备（30 天）')}
+                  </label>
+                  <p className="form-note">{t('不勾选时使用浏览器会话登录，最长 12 小时。')}</p>
+                </>
+              )}
+              <button className="primary" disabled={sending || !host}>
+                {sending
+                  ? t(passwordMode ? '正在登录…' : '正在配对…')
+                  : t(passwordMode ? '登录此主机' : '配对并连接')}
                 <ArrowUp size={16} />
               </button>
             </form>
@@ -1286,7 +1345,7 @@ function HostPanel({
   return (
     <>
       <p className="modal-description">
-        {t('切换主机后，原主机上的任务继续运行。首次访问每台主机都需要单独配对。')}
+        {t('切换主机后任务继续运行。每台主机独立登录，已授权的设备可直接进入。')}
       </p>
       <div className="host-list">
         {hosts.map((h) => (
@@ -1376,6 +1435,12 @@ function SettingsPanel({ onLogout, paired }: { onLogout: () => void; paired: boo
   }, [paired]);
   return (
     <>
+      <section className="password-settings">
+        <h3>{t('主机密码')}</h3>
+        <p className="form-note">
+          {t('在主机终端运行 npm run password:set 设置或修改密码，重启后旧设备需重新登录。')}
+        </p>
+      </section>
       <section className="language-settings">
         <label htmlFor="interface-language">{t('界面语言')}</label>
         <select
@@ -1393,10 +1458,10 @@ function SettingsPanel({ onLogout, paired }: { onLogout: () => void; paired: boo
         <p className="form-note">{t('语言设置保存在此浏览器，聊天内容保持原文。')}</p>
       </section>
       {!paired ? (
-        <p className="form-note">{t('请先配对主机以管理设备。')}</p>
+        <p className="form-note">{t('请先登录主机以管理设备。')}</p>
       ) : (
         <>
-          <p className="modal-description">{t('已配对的设备可以访问此主机上的 Codex 聊天。')}</p>
+          <p className="modal-description">{t('已授权的设备可以访问此主机上的 Codex 聊天。')}</p>
           <div className="session-list">
             {sessions.map((s) => (
               <div key={s.id}>
@@ -1404,7 +1469,9 @@ function SettingsPanel({ onLogout, paired }: { onLogout: () => void; paired: boo
                   {s.label}
                   <small>
                     {s.current ? t('当前设备 · ') : ''}
-                    {t('配对于')} {new Date(s.createdAt).toLocaleDateString(getLocale())}
+                    {t('授权于')} {new Date(s.createdAt).toLocaleDateString(getLocale())}
+                    <br />
+                    {t('到期时间')} {new Date(s.expiresAt).toLocaleString(getLocale())}
                   </small>
                 </span>
                 <button

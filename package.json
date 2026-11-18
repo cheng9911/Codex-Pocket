@@ -20,7 +20,8 @@
     "verify:controls": "tsx scripts/verify-controls.ts",
     "preview:test": "tsx scripts/preview-test.ts",
     "service:install": "tsx scripts/install-service.ts",
-    "verify:features": "tsx scripts/verify-features.ts"
+    "verify:features": "tsx scripts/verify-features.ts",
+    "password:set": "tsx scripts/set-password.ts"
   },
   "dependencies": {
     "@effect/platform-node": "4.1.2",
